@@ -259,6 +259,11 @@ function findIn(alb, raw) {
   const qz = stripZ(q);
   const exact = alb.lineas.filter(l => [l.codigo, l.ean].some(c => { const n = norm(c); return n && (n === q || stripZ(n) === qz); }));
   if (exact.length) return exact;
+  // código de barras largo que lleva dentro el código del albarán (con o sin su último dígito)
+  if (q.length >= 10) {
+    const inside = alb.lineas.filter(l => [l.codigo, l.ean].some(c => { const n = norm(c); return n.length >= 8 && (q.includes(n) || (n.length >= 10 && q.includes(n.slice(0, -1)))); }));
+    if (inside.length) return inside;
+  }
   if (q.length < 3) return [];
   return alb.lineas.filter(l => norm(l.codigo).includes(q) || norm(l.ean).includes(q) || norm(l.desc).includes(q));
 }
