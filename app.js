@@ -642,7 +642,11 @@ function parseSheet(rows) {
   return { ...head, lineas };
 }
 async function importExcel(file) {
-  const d = UI.draft; if (!d) return;
+  if (!UI.draft) UI.draft = { files: [], lineas: [], phase: "pick", error: "" };
+  const d = UI.draft;
+  if (!/\.(xlsx|xlsm|xls|csv|ods)$/i.test(file.name || "") && !/sheet|excel|csv/i.test(file.type || "")) {
+    d.error = `«${file.name}» no parece un Excel. Elige un archivo .xlsx, .xls o .csv.`; UI.mode = "nuevo"; return renderNew();
+  }
   d.error = ""; flash("");
   try {
     await loadXlsx();

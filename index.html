@@ -222,7 +222,7 @@ h3{font-size:16px;font-weight:700}
     <select class="albsel" id="albSel" aria-label="Albarán activo" style="flex-basis:100%"></select>
   </header>
   <div id="view"></div>
-  <p class="foot">Los albaranes se guardan en este móvil. En Ajustes puedes descargar una copia de seguridad.</p>
+  <p class="foot">Los albaranes se guardan en este móvil. En Ajustes puedes descargar una copia de seguridad. · Versión 13</p>
 </div>
 
 <nav class="dock" id="dock" hidden>
@@ -244,10 +244,11 @@ h3{font-size:16px;font-weight:700}
 </div>
 
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
-<input type="file" id="xlsInput" accept=".xlsx,.xls,.xlsm,.csv,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
+<input type="file" id="xlsInput" hidden>
 <input type="file" id="importInput" accept="application/json,.json" hidden>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
