@@ -517,19 +517,17 @@ function renderNew() {
   if (d.phase === "review") return renderReview();
   const hasKey = !!getKey();
   const reading = d.phase === "reading";
-  const showPhotos = hasKey || d.files.length || d.showPhotos;
+  const showPhotos = hasKey || d.files.length;
   $("#view").innerHTML = `<section class="sheet" style="display:flex;flex-direction:column;gap:14px">
     <div class="albhead"><h2>Nuevo albarán</h2><button class="btn ghost" id="nBack" type="button">Cancelar</button></div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <h3>Desde Excel</h3>
-      <p class="muted" style="margin:0;font-size:14px">Elige el Excel del albarán. Lo más fácil es rellenar la plantilla: código, EAN, descripción, cantidad y precio por unidad.</p>
+      <p class="muted" style="margin:0;font-size:14px">Elige el Excel del albarán. Se abre directamente la lista para ir marcando.</p>
       <button class="btn primary" id="nExcel" type="button" style="min-height:56px" ${reading ? "disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12l4 5M13 12l-4 5"/></svg>Importar Excel</button>
       <a class="btn ghost" href="plantilla_albaran.xlsx" download="plantilla_albaran.xlsx">Descargar plantilla de Excel</a>
     </div>
     ${d.error ? `<p class="msg err" style="margin:0">${esc(d.error)}</p>` : ""}
-    <div style="display:flex;flex-direction:column;gap:10px;border-top:1px dashed var(--rule);padding-top:14px">
+    ${showPhotos ? `<div style="display:flex;flex-direction:column;gap:10px;border-top:1px dashed var(--rule);padding-top:14px">
       <h3>Desde foto o PDF</h3>
-      ${showPhotos ? `
       <p class="muted" style="margin:0;font-size:14px">Una foto por página, recta y con buena luz. ${hasKey ? "" : "Necesita una clave de API en Ajustes."}</p>
       <div class="pickbtns">
         <button class="btn" id="nPhoto" type="button" ${reading ? "disabled" : ""}>${ICON.cam}${d.files.length ? "Otra página" : "Hacer foto"}</button>
@@ -537,10 +535,8 @@ function renderNew() {
       </div>
       ${d.files.length ? `<div class="files">${d.files.map((f, i) => `<div class="f"><span>${/pdf/i.test(f.type) || /\.pdf$/i.test(f.name) ? "PDF" : "Página " + (i + 1)} · ${esc(f.name)}</span>${reading ? "" : `<button class="iconbtn" data-rm="${i}" type="button" aria-label="Quitar">${ICON.x}</button>`}</div>`).join("")}</div>` : ""}
       ${reading ? `<div class="progress"><span class="spin"></span><span>${esc(d.note)}</span><button class="btn ghost" id="nStop" type="button">Parar</button></div>` : ""}
-      <button class="btn" id="nRead" type="button" ${!d.files.length || reading ? "disabled" : ""}>Leer con Claude</button>`
-      : `<p class="muted" style="margin:0;font-size:14px">Leer la foto automáticamente necesita una clave de API de Anthropic, que se paga aparte. <button class="btn ghost" id="nShowPhotos" type="button" style="min-height:0;padding:2px 8px">Ver opciones</button></p>`}
-    </div>
-    <button class="btn ghost" id="nManual" type="button">Escribir las líneas a mano</button>
+      <button class="btn" id="nRead" type="button" ${!d.files.length || reading ? "disabled" : ""}>Leer con Claude</button>
+    </div>` : ""}
   </section>`;
   $("#nBack").onclick = () => { d.ctl?.abort(); UI.mode = "cotejo"; render(); };
   if (!reading) $("#nExcel").onclick = () => $("#xlsInput").click();
@@ -551,7 +547,6 @@ function renderNew() {
   }
   $("#view").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { d.files.splice(+b.dataset.rm, 1); renderNew(); });
   if ($("#nRead")) $("#nRead").onclick = readWithClaude;
-  $("#nManual").onclick = () => { d.lineas = [mkLine()]; d.phase = "review"; renderNew(); };
   if ($("#nStop")) $("#nStop").onclick = () => d.ctl?.abort();
 }
 function addDocFiles(files) {
@@ -637,8 +632,14 @@ async function importExcel(file) {
       if (!best || r.lineas.length > best.lineas.length) best = r;
     }
     if (!best || !best.lineas.length) { d.error = "No he encontrado líneas en ese Excel. Revisa que tenga una columna de cantidad, o usa la plantilla."; return renderNew(); }
-    Object.assign(d, { proveedor: best.proveedor || d.proveedor, numero: best.numero || d.numero, fecha: best.fecha || d.fecha, lineas: best.lineas, phase: "review", warn: "" });
-    if (!d.proveedor && !d.numero) d.proveedor = file.name.replace(/\.(xlsx|xlsm|xls|csv|ods)$/i, "");
+    let proveedor = best.proveedor, numero = best.numero;
+    if (!proveedor && !numero) proveedor = file.name.replace(/\.(xlsx|xlsm|xls|csv|ods)$/i, "");
+    // se guarda directamente y se abre la lista con check
+    const alb = { id: uid(), proveedor, numero, fecha: best.fecha, creado: Date.now(), lineas: best.lineas };
+    S.albs.set(alb.id, alb); persist(alb); UI.draft = null;
+    setActive(alb.id);
+    flash(`Albarán importado: ${alb.lineas.length} artículos. Marca cada uno al encontrarlo.`, "ok");
+    return;
   } catch (e) {
     console.warn(e);
     d.error = e?.message === "xlsx" ? "No se pudo cargar el lector de Excel. Comprueba la conexión a internet y vuelve a intentarlo." : "No he podido abrir ese archivo. Guárdalo como .xlsx o .csv y vuelve a intentarlo.";
