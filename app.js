@@ -268,7 +268,7 @@ function search(raw) {
   if (!a || !code) return false;
   if ($("#q")) $("#q").value = "";
   const m = findIn(a, code);
-  if (m.length === 1) { selectLine(m[0].id, UI.conteo); if (!UI.conteo) flash(`Encontrado: ${code}`, "ok"); return true; }
+  if (m.length === 1) { UI.matches = null; selectLine(m[0].id, UI.conteo); if (!UI.conteo) flash(`Encontrado: ${code}`, "ok"); return true; }
   if (m.length > 1) { UI.selected = null; UI.matches = m; flash(`${m.length} artículos coinciden con «${code}»`); renderCard(); return true; }
   const other = [...S.albs.values()].find(x => x.id !== a.id && x.lineas.some(l => [l.codigo, l.ean].some(c => c && stripZ(norm(c)) === stripZ(norm(code)))));
   UI.matches = null; UI.selected = null;
@@ -548,6 +548,7 @@ const COLS = [ // orden de prioridad al asignar columnas; dentro de cada una, de
   ["ean", [/\b(ean|gtin|upc)\b|cod(igo)?\.? ?(de )?barras/]],
   ["importe", [/importe|^total|subtotal/]],
   ["precio", [/precio|p\.? ?unit|\bpvp\b|\bvk\b|preis|coste|tarifa/]],
+  ["nota", [/^nota|observ|anotaci|bemerk/]],
   ["inhalt", [/karton|inhalt|uds? ?(\/|por|x) ?caja|unid.*caja|por caja|^u\/c$/]],
   ["cant", [/cant|menge|uds|unid|\bqty\b|piezas|^u\.?$/]],
   ["desc", [/desc|denomin|bezeichnung/, /producto|nombre|concepto|articulo/]],
@@ -589,11 +590,13 @@ function parseSheet(rows) {
     const codigo = String(g("codigo") ?? "").trim();
     const ean = String(g("ean") ?? "").replace(/\.0+$/, "").trim();
     if (cant == null || (!desc && !codigo && !ean)) continue;
-    if (/^ejemplo/i.test(desc) || /^total/i.test(plain(codigo + desc))) continue;
+    if (/^ejemplo/i.test(desc) || /^total/i.test(plain(codigo + desc)) || /^anzahl/i.test(plain(desc))) continue;
     let precio = parseNum(g("precio"));
     const imp = parseNum(g("importe"));
     if (precio == null && imp != null && cant) precio = Math.round(imp / cant * 10000) / 10000;
-    lineas.push(mkLine({ codigo, ean, descripcion: desc, cantidad: cant, precio, inhalt: parseNum(g("inhalt")) }));
+    const ln = mkLine({ codigo, ean, descripcion: desc, cantidad: cant, precio, inhalt: parseNum(g("inhalt")) });
+    ln.nota = String(g("nota") ?? "").trim();
+    lineas.push(ln);
   }
   return { ...head, lineas };
 }
