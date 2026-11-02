@@ -454,24 +454,11 @@ $("#sTorch").onclick = async () => {
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#scanner").hidden) closeScanner(); });
 
 /* ---------- ajustes ---------- */
-const MODELS = [["claude-sonnet-5-5", "Claude Sonnet 5.5 (recomendado)"], ["claude-haiku-5-5", "Claude Haiku 5.5 (más barato y rápido)"], ["claude-opus-5-5", "Claude Opus 5.5 (más preciso)"]];
-const getKey = () => lsGet("cotejo-api-key") || "";
-const getModel = () => lsGet("cotejo-modelo") || MODELS[0][0];
 function renderSettings() {
-  const key = getKey();
   $("#view").innerHTML = `<section class="sheet" style="display:flex;flex-direction:column;gap:18px">
     <div class="albhead"><h2>Ajustes</h2><button class="btn ghost" id="sBack" type="button">Volver</button></div>
+    <div id="sMsg" class="msg" role="status"></div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <h3>Lectura automática de albaranes</h3>
-      <p class="muted" style="margin:0;font-size:14px">Para leer las fotos y PDF se usa la API de Anthropic con tu propia clave. Se crea en console.anthropic.com → API Keys y se paga por uso (un albarán de una página cuesta unos céntimos). La clave se guarda solo en este navegador y se envía únicamente a api.anthropic.com.</p>
-      <div class="row">
-        <label style="flex:2 1 260px"><span class="label">Clave de API</span><input id="sKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" value="${esc(key)}"></label>
-        <label><span class="label">Modelo</span><select id="sModel">${MODELS.map(([v, t]) => `<option value="${v}" ${v === getModel() ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-      </div>
-      <div class="row"><button class="btn primary" id="sSave" type="button">Guardar</button><button class="btn ghost" id="sShow" type="button">Mostrar clave</button>${key ? `<button class="btn ghost danger" id="sForget" type="button">Borrar clave</button>` : ""}</div>
-      <div id="sMsg" class="msg" role="status"></div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:10px;border-top:1px dashed var(--rule);padding-top:16px">
       <h3>Copia de seguridad</h3>
       <p class="muted" style="margin:0;font-size:14px">Los albaranes se guardan en este móvil. Descarga una copia de vez en cuando, o para pasarlos a un móvil nuevo.</p>
       <div class="row"><button class="btn" id="sExport" type="button">Descargar copia (${S.albs.size} albaranes)</button><button class="btn" id="sImport" type="button">Cargar una copia</button></div>
@@ -483,13 +470,6 @@ function renderSettings() {
   </section>`;
   const sm = (t, c = "ok") => { const m = $("#sMsg"); m.textContent = t; m.className = "msg " + c; };
   $("#sBack").onclick = () => { UI.mode = "cotejo"; UI.confirmWipe = false; render(); };
-  $("#sSave").onclick = () => {
-    const k = $("#sKey").value.trim();
-    if (k && !k.startsWith("sk-")) return sm("La clave debería empezar por «sk-». Revisa que la has copiado entera.", "err");
-    lsSet("cotejo-api-key", k); lsSet("cotejo-modelo", $("#sModel").value); sm("Guardado.");
-  };
-  $("#sShow").onclick = () => { const i = $("#sKey"); i.type = i.type === "password" ? "text" : "password"; $("#sShow").textContent = i.type === "password" ? "Mostrar clave" : "Ocultar clave"; };
-  if ($("#sForget")) $("#sForget").onclick = () => { try { localStorage.removeItem("cotejo-api-key"); } catch { } renderSettings(); };
   $("#sExport").onclick = () => downloadFile(`albaranes_copia_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ app: "cotejo-albaranes", version: 1, albaranes: [...S.albs.values()] }, null, 1), "application/json");
   $("#sImport").onclick = () => $("#importInput").click();
   if ($("#sWipe")) $("#sWipe").onclick = () => { UI.confirmWipe = true; renderSettings(); };
@@ -515,9 +495,7 @@ function startNew() { UI.mode = "nuevo"; UI.draft = { files: [], proveedor: "", 
 function renderNew() {
   const d = UI.draft;
   if (d.phase === "review") return renderReview();
-  const hasKey = !!getKey();
   const reading = d.phase === "reading";
-  const showPhotos = hasKey || d.files.length;
   $("#view").innerHTML = `<section class="sheet" style="display:flex;flex-direction:column;gap:14px">
     <div class="albhead"><h2>Nuevo albarán</h2><button class="btn ghost" id="nBack" type="button">Cancelar</button></div>
     <div style="display:flex;flex-direction:column;gap:10px">
@@ -526,33 +504,9 @@ function renderNew() {
       <a class="btn ghost" href="plantilla_albaran.xlsx" download="plantilla_albaran.xlsx">Descargar plantilla de Excel</a>
     </div>
     ${d.error ? `<p class="msg err" style="margin:0">${esc(d.error)}</p>` : ""}
-    ${showPhotos ? `<div style="display:flex;flex-direction:column;gap:10px;border-top:1px dashed var(--rule);padding-top:14px">
-      <h3>Desde foto o PDF</h3>
-      <p class="muted" style="margin:0;font-size:14px">Una foto por página, recta y con buena luz. ${hasKey ? "" : "Necesita una clave de API en Ajustes."}</p>
-      <div class="pickbtns">
-        <button class="btn" id="nPhoto" type="button" ${reading ? "disabled" : ""}>${ICON.cam}${d.files.length ? "Otra página" : "Hacer foto"}</button>
-        <button class="btn" id="nFiles" type="button" ${reading ? "disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>Elegir PDF o fotos</button>
-      </div>
-      ${d.files.length ? `<div class="files">${d.files.map((f, i) => `<div class="f"><span>${/pdf/i.test(f.type) || /\.pdf$/i.test(f.name) ? "PDF" : "Página " + (i + 1)} · ${esc(f.name)}</span>${reading ? "" : `<button class="iconbtn" data-rm="${i}" type="button" aria-label="Quitar">${ICON.x}</button>`}</div>`).join("")}</div>` : ""}
-      ${reading ? `<div class="progress"><span class="spin"></span><span>${esc(d.note)}</span><button class="btn ghost" id="nStop" type="button">Parar</button></div>` : ""}
-      <button class="btn" id="nRead" type="button" ${!d.files.length || reading ? "disabled" : ""}>Leer con Claude</button>
-    </div>` : ""}
   </section>`;
   $("#nBack").onclick = () => { d.ctl?.abort(); UI.mode = "cotejo"; render(); };
   if (!reading) $("#nExcel").onclick = () => $("#xlsInput").click();
-  if ($("#nShowPhotos")) $("#nShowPhotos").onclick = () => { d.showPhotos = true; renderNew(); };
-  if ($("#nPhoto") && !reading) {
-    $("#nPhoto").onclick = () => $("#docPhoto").click();
-    $("#nFiles").onclick = () => $("#docFiles").click();
-  }
-  $("#view").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { d.files.splice(+b.dataset.rm, 1); renderNew(); });
-  if ($("#nRead")) $("#nRead").onclick = readWithClaude;
-  if ($("#nStop")) $("#nStop").onclick = () => d.ctl?.abort();
-}
-function addDocFiles(files) {
-  const d = UI.draft; if (!d) return;
-  d.files = [...d.files, ...[...files].filter(f => /^image\//.test(f.type) || /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name))];
-  d.error = ""; renderNew();
 }
 
 /* ---------- importar Excel / CSV ---------- */
@@ -647,83 +601,6 @@ async function importExcel(file) {
   renderNew();
 }
 $("#xlsInput").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) importExcel(f); });
-["docPhoto", "docFiles"].forEach(id => $("#" + id).addEventListener("change", e => { addDocFiles(e.target.files); e.target.value = ""; }));
-
-const blobToB64 = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(b); });
-async function imageToJpeg(file) {
-  const bmp = await loadBitmap(file);
-  const sc = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
-  const c = document.createElement("canvas"); c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
-  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(bmp, 0, 0, c.width, c.height);
-  return new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
-}
-
-const PROMPT = `Lee este albarán de entrega (documento de proveedor, normalmente en español) y extrae TODAS las líneas de producto.
-Responde SOLO con JSON válido, sin texto adicional ni bloques de código, con esta forma exacta:
-{"proveedor":"","numero":"","fecha":"AAAA-MM-DD","lineas":[{"codigo":"","ean":"","descripcion":"","cantidad":0,"uds_caja":null,"precio":0,"importe":0}]}
-Reglas:
-- "codigo": referencia o código de artículo del proveedor tal como aparece. "ean": código de barras EAN/UPC si aparece en la línea; si no, "".
-- "cantidad": unidades servidas, tal como figuran en el albarán. "uds_caja": unidades por caja si hay esa columna (solo informativo), si no null.
-- Albaranes de TEDi (Lieferschein, en alemán): "codigo" = POS NR completo (si el último dígito aparece en la línea de abajo, júntalo: 191465 y 3 debajo = "1914653"); "descripcion" = BEZEICHNUNG; "cantidad" = MENGE (unidades); "uds_caja" = KARTON-INHALT; "precio" = VK (precio de venta por unidad); "numero" = Lieferschein Nr.; "fecha" = Belegdatum. Ignora AUFTRAG, WGR y DNP.
-- "precio": precio unitario NETO por unidad, después de descuentos si los hay. Si solo hay importe de línea, precio = importe / cantidad.
-- Números con punto decimal, sin símbolo de moneda. Si un dato no aparece, usa "" o null; no inventes nada.
-- No incluyas líneas de totales, bases imponibles, IVA, portes, envases ni observaciones.
-- "numero": número de albarán. "fecha": fecha del albarán en formato AAAA-MM-DD, o "" si no aparece.
-- Si hay varias páginas o archivos, junta todas las líneas en orden.`;
-
-async function readWithClaude() {
-  const d = UI.draft; const key = getKey();
-  if (!key) { d.error = "Falta la clave de API. Añádela en Ajustes, o pega las líneas desde Excel."; return renderNew(); }
-  d.phase = "reading"; d.error = ""; d.note = "Preparando los archivos…"; renderNew();
-  d.ctl = new AbortController();
-  try {
-    const content = [];
-    for (const f of d.files) {
-      if (/pdf$/i.test(f.type) || /\.pdf$/i.test(f.name)) {
-        if (f.size > 30 * 1024 * 1024) throw { code: "too_big" };
-        content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: await blobToB64(f) } });
-      } else {
-        content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: await blobToB64(await imageToJpeg(f)) } });
-      }
-    }
-    content.push({ type: "text", text: PROMPT });
-    d.note = `Leyendo ${d.files.length} archivo${d.files.length === 1 ? "" : "s"} con Claude… suele tardar menos de un minuto.`; renderNew();
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST", signal: d.ctl.signal,
-      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-      body: JSON.stringify({ model: getModel(), max_tokens: 16000, messages: [{ role: "user", content }] })
-    });
-    const body = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw { code: "http", status: resp.status, detail: body?.error?.message || "" };
-    const text = (body.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-    const s = text.indexOf("{"), e = text.lastIndexOf("}");
-    if (s < 0 || e < s) throw { code: "empty" };
-    const out = JSON.parse(text.slice(s, e + 1));
-    const lineas = (out.lineas || []).map(mkLine).filter(l => l.desc || l.codigo);
-    if (!lineas.length) throw { code: "empty" };
-    Object.assign(d, { proveedor: out.proveedor || "", numero: String(out.numero || ""), fecha: out.fecha || "", lineas, phase: "review",
-      warn: body.stop_reason === "max_tokens" ? "El albarán es muy largo y puede que falten las últimas líneas. Compruébalo con el papel." : "" });
-  } catch (e) {
-    d.phase = "pick";
-    if (e?.name === "AbortError") d.error = "Lectura cancelada.";
-    else if (e?.code === "http") d.error = ({
-      401: "La clave de API no es válida. Revísala en Ajustes.",
-      403: "La clave no tiene permiso para usar este modelo. Prueba otro en Ajustes.",
-      404: "Ese modelo no está disponible para tu clave. Elige otro en Ajustes.",
-      413: "Los archivos pesan demasiado. Prueba con menos páginas.",
-      429: "Has llegado al límite de uso de la API. Espera un minuto o revisa tu saldo en console.anthropic.com.",
-      529: "Claude está saturado ahora mismo. Vuelve a intentarlo en un momento."
-    }[e.status]) || `La API respondió con un error (${e.status}). ${e.detail}`;
-    else if (e?.code === "empty") d.error = "No he encontrado líneas de producto. Prueba con una foto más nítida y recta.";
-    else if (e?.code === "too_big") d.error = "El PDF pesa más de 30 MB. Divídelo o haz fotos de las páginas.";
-    else if (e instanceof SyntaxError) d.error = "La respuesta no se pudo interpretar. Vuelve a intentarlo.";
-    else if (e instanceof TypeError) d.error = "No hay conexión con la API de Anthropic. Revisa internet.";
-    else d.error = "No he podido leer el albarán. Prueba con una foto más nítida o vuelve a intentarlo.";
-    console.warn(e);
-  }
-  renderNew();
-}
-
 function renderReview() {
   const d = UI.draft;
   const total = () => eur(d.lineas.reduce((s, l) => s + (l.cant || 0) * (l.precio || 0), 0));

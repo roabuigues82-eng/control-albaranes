@@ -1,5 +1,5 @@
 // Guarda la app para que abra sin conexión. Sube VERSION cada vez que cambies index.html o app.js.
-const VERSION = "cotejo-v8";
+const VERSION = "cotejo-v9";
 const SHELL = ["./", "index.html", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "plantilla_albaran.xlsx",
   "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
   "https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"];
@@ -12,7 +12,7 @@ self.addEventListener("activate", e => {
 });
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.hostname === "api.anthropic.com") return;
+  if (e.request.method !== "GET") return;
   // la app: primero la red (para coger cambios), si no hay red, la copia guardada
   if (url.origin === location.origin) {
     e.respondWith(fetch(e.request).then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); return r; })
