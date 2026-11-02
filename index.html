@@ -111,6 +111,28 @@ button.chip[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border
 .line .lnums b{display:block;font-family:var(--f-mono);font-weight:500;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums}
 .line .lnote{font-size:12px;color:var(--muted)}
 
+/* Lista con check */
+.progress-line{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:15px}
+.pbar{flex:1;height:10px;background:var(--rule);border-radius:5px;overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--ok);transition:width .3s}
+.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:3px;margin-top:10px}
+.seg button{border:none;background:transparent;border-radius:8px;padding:8px 4px;font-size:13px;font-weight:600;color:var(--muted);min-height:40px}
+.seg button[aria-pressed="true"]{background:var(--sheet);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.checklist{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column}
+.ck{display:flex;align-items:stretch;border-bottom:1px solid var(--rule)}
+.ck:last-child{border-bottom:none}
+.ckbtn{flex:1;min-width:0;display:flex;gap:12px;align-items:flex-start;text-align:left;border:none;background:transparent;padding:12px 4px}
+.ckbtn .box{flex:none;width:30px;height:30px;border:2px solid var(--muted);border-radius:8px;display:grid;place-items:center;margin-top:1px}
+.ckbtn .box svg{width:22px;height:22px}
+.ckbtn .txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ckbtn .d{font-weight:600;font-size:16px;line-height:1.3}
+.ckbtn .m{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.ck.done .box{background:var(--ok);border-color:var(--ok);color:var(--sheet)}
+.ck.done .d{text-decoration:line-through;text-decoration-thickness:2px;color:var(--muted)}
+.ck.flash{background:var(--ok-soft);transition:background 1s}
+.more{flex:none;width:44px;border:none;background:transparent;color:var(--muted);font-size:22px;font-weight:700}
+.extras{margin-top:12px;border-top:1px dashed var(--rule);padding:12px 4px 0}
+.extras summary{color:var(--muted);font-size:14px}
 /* Bloques de subida y revisión */
 .pickbtns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pickbtns .btn{min-height:64px;flex-direction:column;gap:4px}

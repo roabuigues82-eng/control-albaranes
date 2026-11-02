@@ -132,59 +132,75 @@ function renderList(albs) {
 /* ---------- cotejo ---------- */
 function renderCotejo() {
   const a = cur(); const s = stats(a);
-  const lines = a.lineas.filter(l => UI.filter === "todas" || status(l) === UI.filter);
-  const chip = (k, label, n) => `<button type="button" class="chip s-${k}" data-f="${k}" aria-pressed="${UI.filter === k}"><span class="dot"></span>${label} <b>${n}</b></button>`;
-  const diffImp = s.impRec - s.impAlb;
+  const found = s.revisadas, total = s.total, pend = total - found;
+  const inc = s.c.falta + s.c.sobra + s.c.precio + s.c.extra;
+  const f = UI.filter === "pend" || UI.filter === "hechos" ? UI.filter : "todas";
+  const lines = a.lineas.filter(l => f === "todas" || (f === "pend" ? l.recib == null : l.recib != null));
+  const pc = total ? Math.round(found / total * 100) : 0;
+  const seg = (k, label) => `<button type="button" data-f="${k}" aria-pressed="${f === k}">${label}</button>`;
   $("#view").innerHTML = `
   <div class="scanbar">
     <div class="scanrow">
       <div class="field">${ICON.bars}<input id="q" type="search" inputmode="search" autocomplete="off" enterkeyhint="search" placeholder="Escribe el código" aria-label="Código del artículo"></div>
     </div>
+    <div class="progress-line"><div class="pbar"><i style="width:${pc}%"></i></div><span class="mono"><b>${found}</b> / ${total}</span></div>
     <div id="msg" class="msg ${UI.msgType}" role="status">${esc(UI.msg)}</div>
   </div>
   <div id="cardSlot"></div>
-  <section class="sheet">
-    <div class="albhead">
-      <h2>${esc(a.proveedor || "Sin proveedor")} <span class="mono muted" style="font-size:15px;font-weight:400">Nº ${esc(a.numero || "s/n")}</span></h2>
-      <span class="muted">${esc(fmtDate(a.fecha))}</span>
-      ${a.ejemplo ? '<span class="pill s-extra">Albarán de ejemplo</span>' : ""}
+  <section class="sheet" style="padding:12px">
+    <div class="albhead" style="padding:0 4px">
+      <h2>${esc(a.proveedor || "Sin proveedor")} <span class="mono muted" style="font-size:14px;font-weight:400">Nº ${esc(a.numero || "s/n")}</span></h2>
+      ${a.ejemplo ? '<span class="pill s-extra">Ejemplo</span>' : ""}
     </div>
-    <div class="summary">
-      ${chip("todas", "Todas", s.total)}${chip("pend", "Pendientes", s.c.pend)}${chip("ok", "Correctas", s.c.ok)}
-      ${chip("falta", "Faltan", s.c.falta)}${chip("sobra", "Sobran", s.c.sobra)}${chip("precio", "Precio distinto", s.c.precio)}${s.c.extra ? chip("extra", "Fuera de albarán", s.c.extra) : ""}
-    </div>
-    <div class="totals">
-      <div><span class="label">Revisadas</span><span class="v">${s.revisadas} / ${s.total}</span></div>
-      <div><span class="label">Importe albarán</span><span class="v">${eur(s.impAlb)}</span></div>
-      <div><span class="label">Importe recibido</span><span class="v">${eur(s.impRec)}</span></div>
-      <div><span class="label">Diferencia</span><span class="v" style="color:${Math.abs(diffImp) < 0.005 ? "var(--ok)" : "var(--bad)"}">${s.revisadas ? (diffImp > 0 ? "+" : "") + eur(diffImp) : "—"}</span></div>
-    </div>
-    <div class="lines">${lines.map(l => {
-      const st = status(l); return `<button type="button" class="line s-${st}${UI.selected === l.id ? " sel" : ""}" data-id="${l.id}">
-        <span class="lt"><span class="ldesc">${esc(l.desc || "Sin descripción")}</span><span class="pill s-${st}"><span class="dot"></span>${ST_LABEL[st]}</span></span>
-        <span class="lcode">${esc(l.codigo || "—")}${l.ean && l.ean !== l.codigo ? ` · ${esc(l.ean)}` : ""}</span>
-        <span class="lnums"><span>Pedido<b>${l.extra ? "—" : num(l.cant)}</b></span><span>Recibido<b>${l.recib == null ? "—" : num(l.recib)}</b></span>
-        <span>Precio<b>${l.precioReal != null && status(l) === "precio" ? eur(l.precioReal) : eur(l.precio)}</b></span></span>
-        ${l.nota ? `<span class="lnote">${esc(l.nota)}</span>` : ""}
-      </button>`;
-    }).join("") || `<p class="muted">No hay líneas con este filtro.</p>`}</div>
-    <div class="row" style="margin-top:14px">
-      <button class="btn" id="btnExport" type="button">Exportar a Excel (CSV)</button>
-      <button class="btn ghost" id="btnAddLine" type="button">Añadir línea a mano</button>
-      <span style="flex:1"></span>
-      ${UI.confirmDel ? `<span class="muted">¿Borrar este albarán?</span><button class="btn danger" id="btnDelYes" type="button">Sí, borrar</button><button class="btn ghost" id="btnDelNo" type="button">Cancelar</button>` : `<button class="btn ghost" id="btnDel" type="button">Borrar albarán</button>`}
-    </div>
+    <div class="seg">${seg("todas", `Todos ${total}`)}${seg("pend", `Pendientes ${pend}`)}${seg("hechos", `Vistos ${found}`)}</div>
+    <ul class="checklist">${lines.map(l => {
+      const st = status(l); const done = l.recib != null;
+      return `<li class="ck${done ? " done" : ""}${UI.flashId === l.id ? " flash" : ""}" data-id="${l.id}">
+        <button type="button" class="ckbtn" data-tog="${l.id}" aria-pressed="${done}" aria-label="${done ? "Desmarcar" : "Marcar"} ${esc(l.desc)}">
+          <span class="box">${done ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : ""}</span>
+          <span class="txt"><span class="d">${esc(l.desc || "Sin descripción")}</span>
+          <span class="m"><span class="mono">${esc(l.codigo || "—")}</span> · ${l.extra ? "fuera de albarán" : `${num(l.cant)} uds`} · ${eur(l.precio)}${["falta", "sobra", "precio"].includes(st) ? ` · <span class="pill s-${st}">${ST_LABEL[st]}${st !== "precio" ? " " + num(l.recib) : ""}</span>` : ""}</span>
+          ${l.nota ? `<span class="m">${esc(l.nota)}</span>` : ""}</span>
+        </button>
+        <button type="button" class="more" data-edit="${l.id}" aria-label="Corregir cantidad o precio">⋯</button>
+      </li>`;
+    }).join("") || `<li class="muted" style="padding:16px">${f === "pend" ? "¡Todo visto! No queda nada pendiente." : "Nada por aquí todavía."}</li>`}</ul>
+    <details class="extras"${UI.confirmDel ? " open" : ""}><summary>Más opciones</summary>
+      <div class="totals">
+        <div><span class="label">Con diferencias</span><span class="v">${inc}</span></div>
+        <div><span class="label">Importe albarán</span><span class="v">${eur(s.impAlb)}</span></div>
+        <div><span class="label">Importe visto</span><span class="v">${eur(s.impRec)}</span></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="btnExport" type="button">Exportar a Excel (CSV)</button>
+        <button class="btn ghost" id="btnAddLine" type="button">Añadir artículo a mano</button>
+        ${UI.confirmDel ? `<span class="muted">¿Borrar este albarán?</span><button class="btn danger" id="btnDelYes" type="button">Sí, borrar</button><button class="btn ghost" id="btnDelNo" type="button">Cancelar</button>` : `<button class="btn ghost" id="btnDel" type="button">Borrar albarán</button>`}
+      </div>
+    </details>
   </section>`;
   renderCard();
   const q = $("#q");
-  q.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); search(q.value); } });
-  $("#view").querySelectorAll("[data-f]").forEach(b => b.onclick = () => { UI.filter = UI.filter === b.dataset.f ? "todas" : b.dataset.f; renderCotejo(); });
-  $("#view").querySelectorAll(".line[data-id]").forEach(el => el.onclick = () => { UI.selected = el.dataset.id; UI.matches = null; renderCotejo(); scrollTo({ top: 0, behavior: "smooth" }); });
+  q.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); search(q.value); q.blur(); } });
+  $("#view").querySelectorAll("[data-f]").forEach(b => b.onclick = () => { UI.filter = b.dataset.f; renderCotejo(); });
+  $("#view").querySelectorAll("[data-tog]").forEach(el => el.onclick = () => toggleLine(el.dataset.tog));
+  $("#view").querySelectorAll("[data-edit]").forEach(el => el.onclick = () => { UI.selected = el.dataset.edit; UI.matches = null; renderCotejo(); scrollTo({ top: 0, behavior: "smooth" }); });
   $("#btnExport").onclick = exportCsv;
-  $("#btnAddLine").onclick = () => { const l = mkLine({ descripcion: "Artículo nuevo", extra: true }); l.recib = 1; a.lineas.push(l); persist(a); UI.selected = l.id; renderCotejo(); };
+  $("#btnAddLine").onclick = () => { const l = mkLine({ descripcion: "Artículo nuevo", extra: true }); l.recib = 1; a.lineas.push(l); persist(a); UI.selected = l.id; renderCotejo(); scrollTo({ top: 0 }); };
   if ($("#btnDel")) $("#btnDel").onclick = () => { UI.confirmDel = true; renderCotejo(); };
   if ($("#btnDelYes")) $("#btnDelYes").onclick = () => { UI.confirmDel = false; removeAlb(a.id); };
   if ($("#btnDelNo")) $("#btnDelNo").onclick = () => { UI.confirmDel = false; renderCotejo(); };
+  if (UI.flashId) {
+    const el = $(`.ck[data-id="${UI.flashId}"]`);
+    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    const id = UI.flashId; setTimeout(() => { if (UI.flashId === id) { UI.flashId = null; $(`.ck[data-id="${id}"]`)?.classList.remove("flash"); } }, 2500);
+  }
+}
+function toggleLine(id) {
+  const a = cur(); const l = a.lineas.find(x => x.id === id); if (!l) return;
+  if (l.recib == null) { l.recib = l.extra ? 1 : l.cant; flash(`✓ ${l.desc}`, "ok"); }
+  else { l.recib = null; l.precioReal = null; flash(`Desmarcado: ${l.desc}`); }
+  persist(a);
+  const y = scrollY; renderCotejo(); scrollTo(0, y);
 }
 
 function renderCard() {
@@ -273,7 +289,7 @@ function search(raw) {
   if (!a || !code) return false;
   if ($("#q")) $("#q").value = "";
   const m = findIn(a, code);
-  if (m.length === 1) { UI.matches = null; selectLine(m[0].id, UI.conteo); if (!UI.conteo) flash(`Encontrado: ${code}`, "ok"); return true; }
+  if (m.length === 1) { UI.matches = null; selectLine(m[0].id, UI.conteo); return true; }
   if (m.length > 1) { UI.selected = null; UI.matches = m; flash(`${m.length} artículos coinciden con «${code}»`); renderCard(); return true; }
   const other = [...S.albs.values()].find(x => x.id !== a.id && x.lineas.some(l => [l.codigo, l.ean].some(c => c && stripZ(norm(c)) === stripZ(norm(code)))));
   UI.matches = null; UI.selected = null;
@@ -290,9 +306,12 @@ function search(raw) {
 }
 function selectLine(id, count) {
   const a = cur(); const l = a.lineas.find(x => x.id === id); if (!l) return;
-  if (count) { l.recib = (l.recib ?? 0) + 1; persist(a); }
-  UI.selected = id; renderCotejo(); scrollTo({ top: 0 });
-  if (count) flash(`+1 ${l.desc} → ${num(l.recib)} de ${num(l.cant)}`, l.recib > l.cant ? "err" : "ok");
+  if (count) { l.recib = (l.recib ?? 0) + 1; flash(`+1 ${l.desc} → ${num(l.recib)} de ${num(l.cant)}`, l.recib > l.cant ? "err" : "ok"); }
+  else if (l.recib == null) { l.recib = l.extra ? 1 : l.cant; flash(`✓ ${l.desc} · ${num(l.cant)} uds · ${eur(l.precio)}`, "ok"); }
+  else flash(`Ya estaba marcado: ${l.desc}`);
+  persist(a);
+  UI.selected = null; UI.matches = null; UI.flashId = id;
+  renderCotejo();
 }
 
 /* ---------- lectura de códigos de barras ---------- */
