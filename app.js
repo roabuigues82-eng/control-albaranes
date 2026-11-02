@@ -403,7 +403,8 @@ async function openScanner() {
   const caps = track.getCapabilities?.() || {};
   $("#sTorch").hidden = !caps.torch;
   try { if (caps.focusMode?.includes("continuous")) await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch { }
-  $("#smsg").textContent = UI.conteo ? "Modo conteo: cada lectura suma 1. Pulsa Cerrar al acabar." : "Apunta al código de barras";
+  $("#smsg").textContent = UI.conteo ? "Contar +1: cada lectura suma una unidad. Pulsa Cerrar al acabar." : "Ve escaneando: cada artículo se marca solo. Pulsa Cerrar al acabar.";
+  $("#smsg").style.color = "";
   const nd = await getNativeDetector();
   const canvas = document.createElement("canvas");
   const tick = async () => {
@@ -435,12 +436,15 @@ function onLiveCode(code) {
   if (code === SC.last && now - SC.lastAt < 1800) return;
   SC.last = code; SC.lastAt = now;
   beep();
-  if (UI.conteo) {
-    const found = search(code);
-    $("#smsg").textContent = found ? UI.msg : `«${code}» no está en este albarán`;
-  } else { closeScanner(); search(code); }
+  // la cámara sigue abierta para ir escaneando un artículo tras otro
+  const found = search(code);
+  const st = cur() ? stats(cur()) : null;
+  $("#smsg").textContent = (found ? UI.msg : `✗ «${code}» no está en este albarán`) + (st ? `  ·  ${st.revisadas} / ${st.total}` : "");
+  $("#smsg").style.color = found ? "#9ff0b8" : "#ffb4ab";
+  if (!found) try { navigator.vibrate?.([80, 60, 80]); } catch { }
 }
 function closeScanner() {
+  if (UI.flashId) { const el = $(`.ck[data-id="${UI.flashId}"]`); setTimeout(() => el?.scrollIntoView({ block: "center" }), 50); }
   clearTimeout(SC.timer); SC.timer = null;
   SC.stream?.getTracks().forEach(t => t.stop()); SC.stream = null; SC.torch = false;
   $("#video").srcObject = null; $("#scanner").hidden = true;
