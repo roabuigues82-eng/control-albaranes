@@ -1,6 +1,7 @@
 // Guarda la app para que abra sin conexión. Sube VERSION cada vez que cambies index.html o app.js.
-const VERSION = "cotejo-v2";
-const SHELL = ["./", "index.html", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png",
+const VERSION = "cotejo-v3";
+const SHELL = ["./", "index.html", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "plantilla_albaran.xlsx",
+  "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
   "https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"];
 
 self.addEventListener("install", e => {

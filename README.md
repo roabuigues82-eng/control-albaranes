@@ -4,7 +4,8 @@ Aplicación web para el móvil para comprobar la mercancía recibida contra el a
 
 ## Qué hace
 
-- **Lee el albarán** a partir de fotos o de un PDF y saca cada línea: código, EAN, descripción, cantidad y precio unitario neto. La lectura usa la API de Anthropic (Claude) con tu clave. Antes de guardar, revisas y corriges las líneas.
+- **Importa el albarán desde Excel** (.xlsx, .xls o .csv). Reconoce solas las columnas de código, EAN, descripción, cantidad y precio, y en la app hay una plantilla para descargar (`plantilla_albaran.xlsx`).
+- **Lee el albarán** (opcional) a partir de fotos o de un PDF y saca cada línea: código, EAN, descripción, cantidad y precio unitario neto. La lectura usa la API de Anthropic (Claude) con tu clave. Antes de guardar, revisas y corriges las líneas.
 - **Busca cada artículo** de dos formas:
   - con el botón Escanear de abajo, que usa la cámara en vivo, tiene linterna y pita al leer;
   - escribiendo el código, la referencia o parte de la descripción.
@@ -30,7 +31,7 @@ La cámara solo funciona en HTTPS, y GitHub Pages ya lo usa.
 
 La clave queda guardada solo en el navegador de ese dispositivo y la app solo la envía a `api.anthropic.com`. **No la escribas nunca en el código ni la subas a GitHub.** Si el repositorio es público, otras personas podrán abrir la app, pero necesitarán su propia clave y no verán tus albaranes.
 
-Sin clave, la app sigue funcionando: puedes escribir las líneas a mano.
+Sin clave, la app funciona igual: importas el albarán desde Excel o escribes las líneas a mano. La clave solo hace falta para leer fotos o PDF.
 
 ## Archivos
 
@@ -39,6 +40,7 @@ Sin clave, la app sigue funcionando: puedes escribir las líneas a mano.
 | `index.html` | Estructura y estilos |
 | `app.js` | Toda la lógica |
 | `sw.js` | Uso sin conexión. **Cambia `VERSION` cada vez que modifiques la app** para que los móviles reciban la nueva versión |
+| `plantilla_albaran.xlsx` | Plantilla de Excel para pasar los albaranes |
 | `manifest.webmanifest`, `icon*.png`, `icon.svg` | Instalación como app |
 
 ## Probar en local

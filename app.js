@@ -493,28 +493,40 @@ function renderNew() {
   if (d.phase === "review") return renderReview();
   const hasKey = !!getKey();
   const reading = d.phase === "reading";
+  const showPhotos = hasKey || d.files.length || d.showPhotos;
   $("#view").innerHTML = `<section class="sheet" style="display:flex;flex-direction:column;gap:14px">
     <div class="albhead"><h2>Nuevo albarán</h2><button class="btn ghost" id="nBack" type="button">Cancelar</button></div>
-    <p class="muted" style="margin:0;font-size:14px">Haz una foto por cada página del albarán, recta y con buena luz, o elige un PDF.</p>
-    <div class="pickbtns">
-      <button class="btn" id="nPhoto" type="button" ${reading ? "disabled" : ""}>${ICON.cam}${d.files.length ? "Foto de otra página" : "Hacer foto"}</button>
-      <button class="btn" id="nFiles" type="button" ${reading ? "disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>Elegir PDF o fotos</button>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <h3>Desde Excel</h3>
+      <p class="muted" style="margin:0;font-size:14px">Elige el Excel del albarán. Lo más fácil es rellenar la plantilla: código, EAN, descripción, cantidad y precio por unidad.</p>
+      <button class="btn primary" id="nExcel" type="button" style="min-height:56px" ${reading ? "disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12l4 5M13 12l-4 5"/></svg>Importar Excel</button>
+      <a class="btn ghost" href="plantilla_albaran.xlsx" download="plantilla_albaran.xlsx">Descargar plantilla de Excel</a>
     </div>
-    ${d.files.length ? `<div class="files">${d.files.map((f, i) => `<div class="f"><span>${/pdf/i.test(f.type) || /\.pdf$/i.test(f.name) ? "PDF" : "Página " + (i + 1)} · ${esc(f.name)}</span>${reading ? "" : `<button class="iconbtn" data-rm="${i}" type="button" aria-label="Quitar">${ICON.x}</button>`}</div>`).join("")}</div>` : ""}
-    ${reading ? `<div class="progress"><span class="spin"></span><span>${esc(d.note)}</span><button class="btn ghost" id="nStop" type="button">Parar</button></div>` : ""}
     ${d.error ? `<p class="msg err" style="margin:0">${esc(d.error)}</p>` : ""}
-    <button class="btn primary" id="nRead" type="button" style="min-height:52px" ${!d.files.length || reading ? "disabled" : ""}>Leer albarán</button>
-    ${hasKey ? "" : `<p class="muted" style="margin:0;font-size:13px">Para leerlo automáticamente añade tu clave de API en <button class="btn ghost" id="nGoSet" type="button" style="min-height:0;padding:2px 8px">Ajustes</button>.</p>`}
+    <div style="display:flex;flex-direction:column;gap:10px;border-top:1px dashed var(--rule);padding-top:14px">
+      <h3>Desde foto o PDF</h3>
+      ${showPhotos ? `
+      <p class="muted" style="margin:0;font-size:14px">Una foto por página, recta y con buena luz. ${hasKey ? "" : "Necesita una clave de API en Ajustes."}</p>
+      <div class="pickbtns">
+        <button class="btn" id="nPhoto" type="button" ${reading ? "disabled" : ""}>${ICON.cam}${d.files.length ? "Otra página" : "Hacer foto"}</button>
+        <button class="btn" id="nFiles" type="button" ${reading ? "disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>Elegir PDF o fotos</button>
+      </div>
+      ${d.files.length ? `<div class="files">${d.files.map((f, i) => `<div class="f"><span>${/pdf/i.test(f.type) || /\.pdf$/i.test(f.name) ? "PDF" : "Página " + (i + 1)} · ${esc(f.name)}</span>${reading ? "" : `<button class="iconbtn" data-rm="${i}" type="button" aria-label="Quitar">${ICON.x}</button>`}</div>`).join("")}</div>` : ""}
+      ${reading ? `<div class="progress"><span class="spin"></span><span>${esc(d.note)}</span><button class="btn ghost" id="nStop" type="button">Parar</button></div>` : ""}
+      <button class="btn" id="nRead" type="button" ${!d.files.length || reading ? "disabled" : ""}>Leer con Claude</button>`
+      : `<p class="muted" style="margin:0;font-size:14px">Leer la foto automáticamente necesita una clave de API de Anthropic, que se paga aparte. <button class="btn ghost" id="nShowPhotos" type="button" style="min-height:0;padding:2px 8px">Ver opciones</button></p>`}
+    </div>
     <button class="btn ghost" id="nManual" type="button">Escribir las líneas a mano</button>
   </section>`;
   $("#nBack").onclick = () => { d.ctl?.abort(); UI.mode = "cotejo"; render(); };
-  if ($("#nGoSet")) $("#nGoSet").onclick = () => { UI.mode = "ajustes"; render(); };
-  if (!reading) {
+  if (!reading) $("#nExcel").onclick = () => $("#xlsInput").click();
+  if ($("#nShowPhotos")) $("#nShowPhotos").onclick = () => { d.showPhotos = true; renderNew(); };
+  if ($("#nPhoto") && !reading) {
     $("#nPhoto").onclick = () => $("#docPhoto").click();
     $("#nFiles").onclick = () => $("#docFiles").click();
   }
   $("#view").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { d.files.splice(+b.dataset.rm, 1); renderNew(); });
-  $("#nRead").onclick = readWithClaude;
+  if ($("#nRead")) $("#nRead").onclick = readWithClaude;
   $("#nManual").onclick = () => { d.lineas = [mkLine()]; d.phase = "review"; renderNew(); };
   if ($("#nStop")) $("#nStop").onclick = () => d.ctl?.abort();
 }
@@ -523,6 +535,89 @@ function addDocFiles(files) {
   d.files = [...d.files, ...[...files].filter(f => /^image\//.test(f.type) || /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name))];
   d.error = ""; renderNew();
 }
+
+/* ---------- importar Excel / CSV ---------- */
+const XLSX_URL = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+let xlsxLoading = null;
+function loadXlsx() {
+  if (window.XLSX) return Promise.resolve();
+  return xlsxLoading ||= new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = XLSX_URL; sc.onload = res; sc.onerror = () => { xlsxLoading = null; rej(new Error("xlsx")); }; document.head.appendChild(sc); });
+}
+const plain = v => String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+const COLS = [ // orden de prioridad al asignar columnas; dentro de cada una, de patrón más claro a más vago
+  ["ean", [/\b(ean|gtin|upc)\b|cod(igo)?\.? ?(de )?barras/]],
+  ["importe", [/importe|^total|subtotal/]],
+  ["precio", [/precio|p\.? ?unit|\bpvp\b|coste|tarifa/]],
+  ["cant", [/cant|uds|unid|\bqty\b|piezas|^u\.?$/]],
+  ["desc", [/desc|denomin/, /producto|nombre|concepto|articulo/]],
+  ["codigo", [/cod|ref|sku/, /art\.?$|articulo|^n[º°o]? ?art/]]
+];
+function fmtCellDate(v) {
+  if (v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
+  const m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/.exec(String(v ?? "").trim());
+  if (m) return `${m[3].length === 2 ? "20" + m[3] : m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? String(v).slice(0, 10) : "";
+}
+function parseSheet(rows) {
+  rows = rows.map(r => (r || []).map(c => c instanceof Date ? c : (c == null ? "" : c)));
+  // fila de cabecera: la primera con al menos 2 columnas reconocidas, una de ellas cantidad
+  let hi = -1, map = null;
+  for (let i = 0; i < Math.min(rows.length, 30) && hi < 0; i++) {
+    const m = {}; const used = new Set();
+    for (const [k, res] of COLS) for (const re of res) {
+      const j = rows[i].findIndex((c, idx) => !used.has(idx) && typeof c === "string" && re.test(plain(c)));
+      if (j >= 0) { m[k] = j; used.add(j); break; }
+    }
+    if (Object.keys(m).length >= 2 && m.cant != null) { hi = i; map = m; }
+  }
+  if (hi < 0) { hi = -1; map = { codigo: 0, desc: 1, cant: 2, precio: 3, ean: 4 }; }
+  // datos de cabecera del albarán encima de la tabla: "Proveedor | X"
+  const head = { proveedor: "", numero: "", fecha: "" };
+  for (let i = 0; i < Math.max(hi, 0); i++) rows[i].forEach((c, j) => {
+    const k = plain(c); const val = rows[i].slice(j + 1).find(x => x !== "" && x != null);
+    if (val == null) return;
+    if (!head.proveedor && /proveedor|^empresa/.test(k)) head.proveedor = String(val).trim();
+    else if (!head.numero && /albar|^n[º°o]?\.? ?(de )?doc|^numero/.test(k)) head.numero = String(val).trim();
+    else if (!head.fecha && /fecha/.test(k)) head.fecha = fmtCellDate(val);
+  });
+  const lineas = [];
+  for (let i = hi + 1; i < rows.length; i++) {
+    const r = rows[i]; const g = k => map[k] == null ? "" : r[map[k]];
+    const cant = parseNum(g("cant"));
+    const desc = String(g("desc") ?? "").trim();
+    const codigo = String(g("codigo") ?? "").trim();
+    const ean = String(g("ean") ?? "").replace(/\.0+$/, "").trim();
+    if (cant == null || (!desc && !codigo && !ean)) continue;
+    if (/^ejemplo/i.test(desc) || /^total/i.test(plain(codigo + desc))) continue;
+    let precio = parseNum(g("precio"));
+    const imp = parseNum(g("importe"));
+    if (precio == null && imp != null && cant) precio = Math.round(imp / cant * 10000) / 10000;
+    lineas.push(mkLine({ codigo, ean, descripcion: desc, cantidad: cant, precio }));
+  }
+  return { ...head, lineas };
+}
+async function importExcel(file) {
+  const d = UI.draft; if (!d) return;
+  d.error = ""; flash("");
+  try {
+    await loadXlsx();
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+    let best = null;
+    for (const name of wb.SheetNames) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: "" });
+      const r = parseSheet(rows);
+      if (!best || r.lineas.length > best.lineas.length) best = r;
+    }
+    if (!best || !best.lineas.length) { d.error = "No he encontrado líneas en ese Excel. Revisa que tenga una columna de cantidad, o usa la plantilla."; return renderNew(); }
+    Object.assign(d, { proveedor: best.proveedor || d.proveedor, numero: best.numero || d.numero, fecha: best.fecha || d.fecha, lineas: best.lineas, phase: "review", warn: "" });
+    if (!d.proveedor && !d.numero) d.proveedor = file.name.replace(/\.(xlsx|xlsm|xls|csv|ods)$/i, "");
+  } catch (e) {
+    console.warn(e);
+    d.error = e?.message === "xlsx" ? "No se pudo cargar el lector de Excel. Comprueba la conexión a internet y vuelve a intentarlo." : "No he podido abrir ese archivo. Guárdalo como .xlsx o .csv y vuelve a intentarlo.";
+  }
+  renderNew();
+}
+$("#xlsInput").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) importExcel(f); });
 ["docPhoto", "docFiles"].forEach(id => $("#" + id).addEventListener("change", e => { addDocFiles(e.target.files); e.target.value = ""; }));
 
 const blobToB64 = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(b); });

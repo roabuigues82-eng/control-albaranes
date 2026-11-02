@@ -135,6 +135,7 @@ button.chip[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
 details summary{cursor:pointer;font-weight:600}
 textarea.paste{min-height:120px;font-family:var(--f-mono);font-size:13px}
+h3{font-size:16px;font-weight:700}
 .empty{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
 .empty p,.sheet p{max-width:65ch}
 .list{display:flex;flex-direction:column}
@@ -200,6 +201,7 @@ textarea.paste{min-height:120px;font-family:var(--f-mono);font-size:13px}
 
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
 <input type="file" id="docPhoto" accept="image/*" capture="environment" hidden>
+<input type="file" id="xlsInput" accept=".xlsx,.xls,.xlsm,.csv,.ods,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" hidden>
 <input type="file" id="docFiles" accept="image/*,application/pdf" multiple hidden>
 <input type="file" id="importInput" accept="application/json,.json" hidden>
 
