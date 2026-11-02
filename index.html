@@ -115,8 +115,24 @@ button.chip[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border
 .progress-line{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:15px}
 .pbar{flex:1;height:10px;background:var(--rule);border-radius:5px;overflow:hidden}
 .pbar i{display:block;height:100%;background:var(--ok);transition:width .3s}
-.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:3px;margin-top:10px}
-.seg button{border:none;background:transparent;border-radius:8px;padding:8px 4px;font-size:13px;font-weight:600;color:var(--muted);min-height:40px}
+.seg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:3px;margin-top:10px}
+.seg button{border:none;background:transparent;border-radius:8px;padding:6px 2px;font-size:12px;font-weight:600;color:var(--muted);min-height:44px;display:flex;flex-direction:column;align-items:center;line-height:1.2}
+.seg button b{font-family:var(--f-mono);font-size:15px;color:inherit}
+.seg button[data-f="dif"]{color:var(--bad)}
+.difsum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.difsum div{border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.difsum .neg{background:var(--bad-soft)} .difsum .pos{background:var(--ok-soft)}
+.difsum b{font-family:var(--f-mono);font-size:17px}
+.difsum .neg b{color:var(--bad)} .difsum .pos b{color:var(--ok)}
+.difsum span:not(.label){font-family:var(--f-mono);font-size:13px}
+.dif button{width:100%;display:flex;gap:10px;align-items:center;text-align:left;border:none;background:transparent;padding:12px 4px;border-left:4px solid var(--ok);padding-left:10px}
+.dif.neg button{border-left-color:var(--bad)}
+.dif .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.dif .d{font-weight:600}
+.dif .m{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.dif .amt{flex:none;display:flex;flex-direction:column;align-items:flex-end;font-family:var(--f-mono);font-size:13px}
+.dif .amt b{font-size:15px}
+.dif.neg .amt{color:var(--bad)} .dif.pos .amt{color:var(--ok)}
 .seg button[aria-pressed="true"]{background:var(--sheet);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .checklist{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column}
 .ck{display:flex;align-items:stretch;border-bottom:1px solid var(--rule)}

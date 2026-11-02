@@ -133,7 +133,8 @@ function renderCotejo() {
   const a = cur(); const s = stats(a);
   const found = s.revisadas, total = s.total, pend = total - found;
   const inc = s.c.falta + s.c.sobra + s.c.precio + s.c.extra;
-  const f = UI.filter === "pend" || UI.filter === "hechos" ? UI.filter : "todas";
+  const f = ["pend", "hechos", "dif"].includes(UI.filter) ? UI.filter : "todas";
+  const D = diffs(a);
   const lines = a.lineas.filter(l => f === "todas" || (f === "pend" ? l.recib == null : l.recib != null));
   const pc = total ? Math.round(found / total * 100) : 0;
   const seg = (k, label) => `<button type="button" data-f="${k}" aria-pressed="${f === k}">${label}</button>`;
@@ -151,8 +152,8 @@ function renderCotejo() {
       <h2>${esc(a.proveedor || "Sin proveedor")} <span class="mono muted" style="font-size:14px;font-weight:400">Nº ${esc(a.numero || "s/n")}</span></h2>
       ${a.ejemplo ? '<span class="pill s-extra">Ejemplo</span>' : ""}
     </div>
-    <div class="seg">${seg("todas", `Todos ${total}`)}${seg("pend", `Pendientes ${pend}`)}${seg("hechos", `Vistos ${found}`)}</div>
-    <ul class="checklist">${lines.map(l => {
+    <div class="seg">${seg("todas", `Todos<b>${total}</b>`)}${seg("pend", `Pendientes<b>${pend}</b>`)}${seg("hechos", `Vistos<b>${found}</b>`)}${seg("dif", `Diferencias<b>${D.rows.length}</b>`)}</div>
+    ${f === "dif" ? renderDiffs(D, pend) : `<ul class="checklist">${lines.map(l => {
       const st = status(l); const done = l.recib != null;
       return `<li class="ck${done ? " done" : ""}${UI.flashId === l.id ? " flash" : ""}" data-id="${l.id}">
         <button type="button" class="ckbtn" data-tog="${l.id}" aria-pressed="${done}" aria-label="${done ? "Desmarcar" : "Marcar"} ${esc(l.desc)}">
@@ -163,7 +164,7 @@ function renderCotejo() {
         </button>
         <button type="button" class="more" data-edit="${l.id}" aria-label="Cambiar cantidad de ${esc(l.desc)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button>
       </li>`;
-    }).join("") || `<li class="muted" style="padding:16px">${f === "pend" ? "¡Todo visto! No queda nada pendiente." : "Nada por aquí todavía."}</li>`}</ul>
+    }).join("") || `<li class="muted" style="padding:16px">${f === "pend" ? "¡Todo visto! No queda nada pendiente." : "Nada por aquí todavía."}</li>`}</ul>`}
     <details class="extras"${UI.confirmDel ? " open" : ""}><summary>Más opciones</summary>
       <div class="totals">
         <div><span class="label">Con diferencias</span><span class="v">${inc}</span></div>
@@ -181,6 +182,7 @@ function renderCotejo() {
   const q = $("#q");
   q.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); search(q.value); q.blur(); } });
   $("#view").querySelectorAll("[data-f]").forEach(b => b.onclick = () => { UI.filter = b.dataset.f; renderCotejo(); });
+  if ($("#btnDifXlsx")) $("#btnDifXlsx").onclick = () => exportDiffXlsx(a);
   $("#view").querySelectorAll("[data-tog]").forEach(el => el.onclick = () => toggleLine(el.dataset.tog));
   $("#view").querySelectorAll("[data-edit]").forEach(el => el.onclick = () => { UI.selected = el.dataset.edit; UI.matches = null; renderCotejo(); scrollTo({ top: 0, behavior: "smooth" }); });
   $("#btnExport").onclick = exportCsv;
@@ -200,6 +202,64 @@ function toggleLine(id) {
   else { l.recib = null; l.precioReal = null; flash(`Desmarcado: ${l.desc}`); }
   persist(a);
   const y = scrollY; renderCotejo(); scrollTo(0, y);
+}
+
+/* ---------- diferencias ---------- */
+function diffs(a) {
+  const rows = [];
+  let faltaU = 0, faltaE = 0, sobraU = 0, sobraE = 0, precioE = 0;
+  a.lineas.forEach(l => {
+    if (l.recib == null) return;
+    const pAlb = l.precio || 0, pReal = l.precioReal ?? pAlb;
+    const du = l.extra ? l.recib : l.recib - (l.cant || 0);
+    const qtyE = du * pAlb;
+    const prE = l.recib * (pReal - pAlb);
+    if (Math.abs(du) < 1e-9 && Math.abs(prE) < 0.005) return;
+    const tipo = l.extra ? "Fuera de albarán" : du < 0 ? "Falta" : du > 0 ? "Sobra" : "Precio distinto";
+    if (du < 0) { faltaU += -du; faltaE += qtyE; } else if (du > 0) { sobraU += du; sobraE += qtyE; }
+    precioE += prE;
+    rows.push({ l, du, euros: qtyE + prE, prE, tipo });
+  });
+  return { rows, faltaU, faltaE, sobraU, sobraE, precioE, neto: faltaE + sobraE + precioE };
+}
+const sgn = (n, f) => (n > 0 ? "+" : n < 0 ? "−" : "") + f(Math.abs(n));
+function renderDiffs(D, pend) {
+  const row = r => `<li class="dif ${r.du < 0 || r.euros < 0 ? "neg" : "pos"}"><button type="button" data-edit="${r.l.id}">
+      <span class="txt"><span class="d">${esc(r.l.desc)}</span>
+      <span class="m"><span class="mono">${esc(r.l.codigo || "—")}</span> · ${r.l.extra ? "no está en el albarán" : `albarán ${num(r.l.cant)} → llegan ${num(r.l.recib)}`}${Math.abs(r.prE) >= 0.005 ? ` · precio ${eur(r.l.precioReal)} (albarán ${eur(r.l.precio)})` : ""}</span>
+      ${r.l.nota ? `<span class="m">${esc(r.l.nota)}</span>` : ""}</span>
+      <span class="amt"><b>${r.du ? sgn(r.du, num) + " uds" : r.tipo}</b><span>${sgn(r.euros, eur)}</span></span>
+    </button></li>`;
+  return `<div class="difsum">
+      <div class="neg"><span class="label">Faltan</span><b>${num(D.faltaU)} uds</b><span>${sgn(D.faltaE, eur)}</span></div>
+      <div class="pos"><span class="label">Sobran</span><b>${num(D.sobraU)} uds</b><span>${sgn(D.sobraE, eur)}</span></div>
+      <div class="${D.neto < 0 ? "neg" : "pos"}"><span class="label">Total</span><b>${sgn(D.neto, eur)}</b><span>${D.precioE ? `precios ${sgn(D.precioE, eur)}` : "&nbsp;"}</span></div>
+    </div>
+    ${pend ? `<p class="muted" style="font-size:13px;margin:8px 4px 0">Quedan ${pend} artículos sin marcar. Si no aparecen, también faltarán.</p>` : ""}
+    <ul class="checklist">${D.rows.map(row).join("") || `<li class="muted" style="padding:16px">Sin diferencias por ahora. Cuando cambies una cantidad con el lápiz ✎, aparecerá aquí.</li>`}</ul>
+    <button class="btn" id="btnDifXlsx" type="button" style="width:100%;margin-top:10px">Descargar hoja de diferencias (Excel)</button>`;
+}
+async function exportDiffXlsx(a) {
+  flash("Preparando el Excel…");
+  try { await loadXlsx(); } catch { flash("No se pudo preparar el Excel. Revisa la conexión a internet.", "err"); return; }
+  const D = diffs(a);
+  const r2 = n => Math.round(n * 100) / 100;
+  const head = [["Albarán", a.numero || ""], ["Proveedor", a.proveedor || ""], ["Fecha", fmtDate(a.fecha)], []];
+  const cols = ["Código", "Descripción", "Cant. albarán", "Cant. recibida", "Diferencia uds", "Precio albarán", "Precio real", "Diferencia €", "Tipo", "Nota"];
+  const body = D.rows.map(r => [r.l.codigo, r.l.desc, r.l.extra ? "" : r.l.cant, r.l.recib, r.du, r.l.precio ?? "", r.l.precioReal ?? "", r2(r.euros), r.tipo, r.l.nota || ""]);
+  const foot = [[], ["Faltan", "", "", "", -D.faltaU, "", "", r2(D.faltaE)], ["Sobran", "", "", "", D.sobraU, "", "", r2(D.sobraE)], ["Diferencia de precios", "", "", "", "", "", "", r2(D.precioE)], ["TOTAL", "", "", "", D.sobraU - D.faltaU, "", "", r2(D.neto)]];
+  const ws = XLSX.utils.aoa_to_sheet([...head, cols, ...body, ...foot]);
+  ws["!cols"] = [{ wch: 13 }, { wch: 36 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 12 }, { wch: 16 }, { wch: 30 }];
+  const pendRows = a.lineas.filter(l => l.recib == null).map(l => [l.codigo, l.desc, l.cant, l.precio ?? "", r2((l.cant || 0) * (l.precio || 0))]);
+  const ws2 = XLSX.utils.aoa_to_sheet([["Artículos sin marcar (aún no encontrados)"], [], ["Código", "Descripción", "Cant. albarán", "Precio", "Importe"], ...pendRows]);
+  ws2["!cols"] = [{ wch: 13 }, { wch: 36 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Diferencias");
+  XLSX.utils.book_append_sheet(wb, ws2, "Sin marcar");
+  const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const safe = t => String(t || "").replace(/[^\w\-]+/g, "_");
+  downloadFile(`diferencias_${safe(a.numero) || "albaran"}.xlsx`, out, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  flash("Hoja de diferencias descargada.", "ok");
 }
 
 function renderCard() {
