@@ -78,7 +78,7 @@ function stats(alb) {
 function mkLine(o = {}) {
   return {
     id: uid(), codigo: String(o.codigo ?? "").trim(), ean: String(o.ean ?? "").trim(), desc: String(o.descripcion ?? o.desc ?? "").trim(),
-    cant: parseNum(o.cantidad ?? o.cant) ?? 0, precio: parseNum(o.precio), recib: null, precioReal: null, nota: "", extra: !!o.extra
+    cant: parseNum(o.cantidad ?? o.cant) ?? 0, inhalt: parseNum(o.uds_caja ?? o.inhalt), precio: parseNum(o.precio), recib: null, precioReal: null, nota: "", extra: !!o.extra
   };
 }
 
@@ -211,7 +211,7 @@ function renderCard() {
     </div>
     <div class="cmp">
       <div class="cmpbox"><span class="label">Cantidad recibida</span>
-        <span class="exp">${l.extra ? "No figura en el albarán" : `En albarán: <b>${num(l.cant)}</b>`}</span>
+        <span class="exp">${l.extra ? "No figura en el albarán" : `En albarán: <b>${num(l.cant)}</b>${l.inhalt ? ` uds · caja de ${num(l.inhalt)}` : ""}`}</span>
         <div class="stepper"><button type="button" id="cMinus" aria-label="Restar uno">−</button>
         <input id="cRecib" inputmode="decimal" value="${comma(l.recib)}" placeholder="${l.extra ? "0" : comma(l.cant)}" aria-label="Cantidad recibida">
         <button type="button" id="cPlus" aria-label="Sumar uno">+</button></div>
@@ -547,10 +547,11 @@ const plain = v => String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLo
 const COLS = [ // orden de prioridad al asignar columnas; dentro de cada una, de patrón más claro a más vago
   ["ean", [/\b(ean|gtin|upc)\b|cod(igo)?\.? ?(de )?barras/]],
   ["importe", [/importe|^total|subtotal/]],
-  ["precio", [/precio|p\.? ?unit|\bpvp\b|coste|tarifa/]],
-  ["cant", [/cant|uds|unid|\bqty\b|piezas|^u\.?$/]],
-  ["desc", [/desc|denomin/, /producto|nombre|concepto|articulo/]],
-  ["codigo", [/cod|ref|sku/, /art\.?$|articulo|^n[º°o]? ?art/]]
+  ["precio", [/precio|p\.? ?unit|\bpvp\b|\bvk\b|preis|coste|tarifa/]],
+  ["inhalt", [/karton|inhalt|uds? ?(\/|por|x) ?caja|unid.*caja|por caja|^u\/c$/]],
+  ["cant", [/cant|menge|uds|unid|\bqty\b|piezas|^u\.?$/]],
+  ["desc", [/desc|denomin|bezeichnung/, /producto|nombre|concepto|articulo/]],
+  ["codigo", [/cod|ref|sku|pos\.? ?nr|artikel ?nr|art\.? ?nr/, /art\.?$|articulo|^n[º°o]? ?art/]]
 ];
 function fmtCellDate(v) {
   if (v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
@@ -575,10 +576,10 @@ function parseSheet(rows) {
   const head = { proveedor: "", numero: "", fecha: "" };
   for (let i = 0; i < Math.max(hi, 0); i++) rows[i].forEach((c, j) => {
     const k = plain(c); const val = rows[i].slice(j + 1).find(x => x !== "" && x != null);
-    if (val == null) return;
-    if (!head.proveedor && /proveedor|^empresa/.test(k)) head.proveedor = String(val).trim();
-    else if (!head.numero && /albar|^n[º°o]?\.? ?(de )?doc|^numero/.test(k)) head.numero = String(val).trim();
-    else if (!head.fecha && /fecha/.test(k)) head.fecha = fmtCellDate(val);
+    if (val == null || /total|importe|unidades|summe/.test(k)) return;
+    if (!head.proveedor && /proveedor|^empresa|lieferant/.test(k)) head.proveedor = String(val).trim();
+    else if (!head.numero && /albar|lieferschein|^n[º°o]?\.? ?(de )?doc|^numero/.test(k)) head.numero = String(val).trim();
+    else if (!head.fecha && /fecha|datum/.test(k)) head.fecha = fmtCellDate(val);
   });
   const lineas = [];
   for (let i = hi + 1; i < rows.length; i++) {
@@ -592,7 +593,7 @@ function parseSheet(rows) {
     let precio = parseNum(g("precio"));
     const imp = parseNum(g("importe"));
     if (precio == null && imp != null && cant) precio = Math.round(imp / cant * 10000) / 10000;
-    lineas.push(mkLine({ codigo, ean, descripcion: desc, cantidad: cant, precio }));
+    lineas.push(mkLine({ codigo, ean, descripcion: desc, cantidad: cant, precio, inhalt: parseNum(g("inhalt")) }));
   }
   return { ...head, lineas };
 }
@@ -631,10 +632,11 @@ async function imageToJpeg(file) {
 
 const PROMPT = `Lee este albarán de entrega (documento de proveedor, normalmente en español) y extrae TODAS las líneas de producto.
 Responde SOLO con JSON válido, sin texto adicional ni bloques de código, con esta forma exacta:
-{"proveedor":"","numero":"","fecha":"AAAA-MM-DD","lineas":[{"codigo":"","ean":"","descripcion":"","cantidad":0,"precio":0,"importe":0}]}
+{"proveedor":"","numero":"","fecha":"AAAA-MM-DD","lineas":[{"codigo":"","ean":"","descripcion":"","cantidad":0,"uds_caja":null,"precio":0,"importe":0}]}
 Reglas:
 - "codigo": referencia o código de artículo del proveedor tal como aparece. "ean": código de barras EAN/UPC si aparece en la línea; si no, "".
-- "cantidad": unidades totales servidas. Si viene en cajas o bultos y se indican las unidades por caja, multiplica y escribe las unidades.
+- "cantidad": unidades servidas, tal como figuran en el albarán. "uds_caja": unidades por caja si hay esa columna (solo informativo), si no null.
+- Albaranes de TEDi (Lieferschein, en alemán): "codigo" = POS NR completo (si el último dígito aparece en la línea de abajo, júntalo: 191465 y 3 debajo = "1914653"); "descripcion" = BEZEICHNUNG; "cantidad" = MENGE (unidades); "uds_caja" = KARTON-INHALT; "precio" = VK (precio de venta por unidad); "numero" = Lieferschein Nr.; "fecha" = Belegdatum. Ignora AUFTRAG, WGR y DNP.
 - "precio": precio unitario NETO por unidad, después de descuentos si los hay. Si solo hay importe de línea, precio = importe / cantidad.
 - Números con punto decimal, sin símbolo de moneda. Si un dato no aparece, usa "" o null; no inventes nada.
 - No incluyas líneas de totales, bases imponibles, IVA, portes, envases ni observaciones.
@@ -711,6 +713,7 @@ function renderReview() {
       <label><span class="label">Código</span><input data-k="codigo" class="mono" value="${esc(l.codigo)}"></label>
       <label><span class="label">EAN</span><input data-k="ean" class="mono" inputmode="numeric" value="${esc(l.ean)}"></label>
       <label><span class="label">Cantidad</span><input data-k="cant" class="n" inputmode="decimal" value="${comma(l.cant)}"></label>
+      <label><span class="label">Uds por caja</span><input data-k="inhalt" class="n" inputmode="decimal" placeholder="—" value="${comma(l.inhalt)}"></label>
       <label><span class="label">Precio ud.</span><input data-k="precio" class="n" inputmode="decimal" value="${comma(l.precio)}"></label>
       <div class="rfoot"><span class="muted">Importe <span class="mono imp">${eur((l.cant || 0) * (l.precio || 0))}</span></span>
       <button class="btn ghost danger" data-del="${i}" type="button" style="min-height:36px;padding:4px 10px">Quitar</button></div>
@@ -723,7 +726,7 @@ function renderReview() {
   $("#view").querySelectorAll(".rline").forEach(box => {
     const l = d.lineas[+box.dataset.i];
     box.querySelectorAll("input").forEach(inp => inp.oninput = () => {
-      const k = inp.dataset.k; l[k] = (k === "cant" || k === "precio") ? parseNum(inp.value) : inp.value;
+      const k = inp.dataset.k; l[k] = (k === "cant" || k === "precio" || k === "inhalt") ? parseNum(inp.value) : inp.value;
       box.querySelector(".imp").textContent = eur((l.cant || 0) * (l.precio || 0));
       $("#rTot").textContent = total();
     });
@@ -746,14 +749,14 @@ function exportCsv() {
   const q = v => { const t = String(v ?? ""); return /[;"\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
   const f = n => n == null ? "" : String(Math.round(n * 1000) / 1000).replace(".", ",");
   const rows = [["Proveedor", a.proveedor], ["Albarán", a.numero], ["Fecha", fmtDate(a.fecha)], [],
-    ["Código", "EAN", "Descripción", "Cant. albarán", "Cant. recibida", "Diferencia cant.", "Precio albarán", "Precio real", "Diferencia precio ud.", "Diferencia importe", "Estado", "Nota"]];
+    ["Código", "EAN", "Descripción", "Uds/caja", "Cant. albarán", "Cant. recibida", "Diferencia cant.", "Precio albarán", "Precio real", "Diferencia precio ud.", "Diferencia importe", "Estado", "Nota"]];
   a.lineas.forEach(l => {
     const pr = l.precioReal ?? l.precio;
-    const dImp = (l.recib ?? 0) * (pr ?? 0) - (l.extra ? 0 : (l.cant || 0) * (l.precio || 0));
-    rows.push([l.codigo, l.ean, l.desc, l.extra ? "" : f(l.cant), f(l.recib), l.recib == null || l.extra ? "" : f(l.recib - l.cant), f(l.precio), f(l.precioReal),
+    const dImp = ((l.recib ?? 0) * (pr ?? 0) - (l.extra ? 0 : (l.cant || 0) * (l.precio || 0)));
+    rows.push([l.codigo, l.ean, l.desc, f(l.inhalt), l.extra ? "" : f(l.cant), f(l.recib), l.recib == null || l.extra ? "" : f(l.recib - l.cant), f(l.precio), f(l.precioReal),
       l.precioReal == null || l.precio == null ? "" : f(l.precioReal - l.precio), l.recib == null ? "" : f(dImp), ST_LABEL[status(l)], l.nota]);
   });
-  rows.push([], ["Importe albarán", "", "", f(s.impAlb)], ["Importe recibido", "", "", f(s.impRec)], ["Diferencia", "", "", f(s.impRec - s.impAlb)]);
+  rows.push([], ["Importe albarán", "", "", "", f(s.impAlb)], ["Importe recibido", "", "", "", f(s.impRec)], ["Diferencia", "", "", "", f(s.impRec - s.impAlb)]);
   const csv = "﻿" + rows.map(r => r.map(q).join(";")).join("\r\n");
   const safe = t => String(t || "").replace(/[^\w\-]+/g, "_");
   downloadFile(`cotejo_${safe(a.proveedor) || "albaran"}_${safe(a.numero) || "sn"}.csv`, csv, "text/csv;charset=utf-8");
