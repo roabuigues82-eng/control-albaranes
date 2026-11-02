@@ -83,7 +83,7 @@ function mkLine(o = {}) {
 }
 
 /* ---------- estado de la interfaz ---------- */
-const UI = { mode: "cotejo", filter: "todas", selected: null, matches: null, msg: "", msgType: "", draft: null, conteo: lsGet("cotejo-conteo") === "1", confirmDel: false, confirmWipe: false };
+const UI = { mode: "cotejo", filter: "todas", selected: null, matches: null, msg: "", msgType: "", draft: null, conteo: false, confirmDel: false, confirmWipe: false };
 function flash(t, type = "") { UI.msg = t; UI.msgType = type; const m = $("#msg"); if (m) { m.textContent = t; m.className = "msg " + type; } }
 function fmtDate(f) { if (!f) return "Sin fecha"; const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(f); return m ? `${m[3]}/${m[2]}/${m[1]}` : f; }
 function setActive(id) { S.active = id; lsSet("cotejo-activo", id); Object.assign(UI, { mode: "cotejo", selected: null, matches: null, filter: "todas", confirmDel: false }); flash(""); render(); }
@@ -94,7 +94,6 @@ function render() {
   sel.innerHTML = albs.length ? albs.map(a => `<option value="${a.id}" ${a.id === S.active ? "selected" : ""}>${esc(a.proveedor || "Sin proveedor")} · ${esc(a.numero || "s/n")}${a.ejemplo ? " (ejemplo)" : ""}</option>`).join("") + `<option value="__list">Ver todos los albaranes…</option>` : `<option>Sin albaranes</option>`;
   sel.disabled = !albs.length;
   $("#dock").hidden = !(UI.mode === "cotejo" && cur());
-  $("#conteo").checked = UI.conteo;
   if (UI.mode === "nuevo") return renderNew();
   if (UI.mode === "lista") return renderList(albs);
   if (UI.mode === "ajustes") return renderSettings();
@@ -159,10 +158,10 @@ function renderCotejo() {
         <button type="button" class="ckbtn" data-tog="${l.id}" aria-pressed="${done}" aria-label="${done ? "Desmarcar" : "Marcar"} ${esc(l.desc)}">
           <span class="box">${done ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : ""}</span>
           <span class="txt"><span class="d">${esc(l.desc || "Sin descripción")}</span>
-          <span class="m"><span class="mono">${esc(l.codigo || "—")}</span> · ${l.extra ? "fuera de albarán" : `${num(l.cant)} uds`} · ${eur(l.precio)}${["falta", "sobra", "precio"].includes(st) ? ` · <span class="pill s-${st}">${ST_LABEL[st]}${st !== "precio" ? " " + num(l.recib) : ""}</span>` : ""}</span>
+          <span class="m"><span class="mono">${esc(l.codigo || "—")}</span> · ${l.extra ? "fuera de albarán" : `${num(l.cant)} uds`} · ${eur(l.precio)}${st === "falta" ? ` · <span class="pill s-falta">Faltan ${num(l.cant - l.recib)}</span>` : st === "sobra" ? ` · <span class="pill s-sobra">Sobran ${num(l.recib - l.cant)}</span>` : st === "precio" ? ` · <span class="pill s-precio">Precio distinto</span>` : ""}</span>
           ${l.nota ? `<span class="m">${esc(l.nota)}</span>` : ""}</span>
         </button>
-        <button type="button" class="more" data-edit="${l.id}" aria-label="Corregir cantidad o precio">⋯</button>
+        <button type="button" class="more" data-edit="${l.id}" aria-label="Cambiar cantidad de ${esc(l.desc)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button>
       </li>`;
     }).join("") || `<li class="muted" style="padding:16px">${f === "pend" ? "¡Todo visto! No queda nada pendiente." : "Nada por aquí todavía."}</li>`}</ul>
     <details class="extras"${UI.confirmDel ? " open" : ""}><summary>Más opciones</summary>
@@ -215,55 +214,60 @@ function renderCard() {
   }
   const l = a.lineas.find(x => x.id === UI.selected);
   if (!l) { slot.innerHTML = ""; return; }
-  const st = status(l);
-  slot.innerHTML = `<section class="card s-${st}" aria-live="polite">
+  const start = l.recib ?? (l.extra ? 1 : l.cant);
+  slot.innerHTML = `<section class="card" aria-live="polite">
     <div class="top">
       <div style="min-width:0;flex:1">
-        ${l.extra ? `<input id="cDesc" value="${esc(l.desc)}" aria-label="Descripción" style="width:100%;font:700 18px var(--f-display);border:1px solid var(--rule);background:var(--paper);border-radius:8px;padding:6px 10px">` : `<div class="desc">${esc(l.desc || "Sin descripción")}</div>`}
-        <div class="codes">${l.extra ? `<label>Código <input id="cCode" class="mono" value="${esc(l.codigo)}" style="border:1px solid var(--rule);background:var(--paper);border-radius:6px;padding:3px 6px;width:150px"></label>` : `<span>Ref. ${esc(l.codigo || "—")}</span>${l.ean ? `<span>EAN ${esc(l.ean)}</span>` : ""}`}</div>
+        ${l.extra ? `<input id="cDesc" value="${esc(l.desc)}" aria-label="Descripción" class="cin" style="font:700 17px var(--f-display)">` : `<div class="desc">${esc(l.desc || "Sin descripción")}</div>`}
+        <div class="codes">${l.extra ? `<label>Código <input id="cCode" class="mono cin" value="${esc(l.codigo)}" style="width:160px;padding:3px 6px;min-height:0"></label>` : `<span>${esc(l.codigo || "—")}</span>`}</div>
       </div>
-      <span class="pill s-${st}"><span class="dot"></span>${ST_LABEL[st]}</span>
-      <button class="iconbtn" id="cClose" aria-label="Cerrar ficha" type="button">${ICON.x}</button>
+      <button class="iconbtn" id="cClose" aria-label="Cerrar" type="button">${ICON.x}</button>
     </div>
-    <div class="cmp">
-      <div class="cmpbox"><span class="label">Cantidad recibida</span>
-        <span class="exp">${l.extra ? "No figura en el albarán" : `En albarán: <b>${num(l.cant)}</b>${l.inhalt ? ` uds · caja de ${num(l.inhalt)}` : ""}`}</span>
-        <div class="stepper"><button type="button" id="cMinus" aria-label="Restar uno">−</button>
-        <input id="cRecib" inputmode="decimal" value="${comma(l.recib)}" placeholder="${l.extra ? "0" : comma(l.cant)}" aria-label="Cantidad recibida">
-        <button type="button" id="cPlus" aria-label="Sumar uno">+</button></div>
-        <div class="diff" id="dQty"></div>
-      </div>
-      <div class="cmpbox"><span class="label">Precio unitario real</span>
-        <span class="exp">${l.extra ? "Sin precio de albarán" : `En albarán: <b>${eur(l.precio)}</b>`}</span>
-        <input id="cPrecio" inputmode="decimal" value="${comma(l.precioReal)}" placeholder="${l.precio == null ? "0,00" : l.precio.toFixed(2).replace(".", ",")}" aria-label="Precio unitario real">
-        <div class="diff" id="dPrice"></div>
-      </div>
+    <div class="qty">
+      <div class="qlab">${l.extra ? "No está en el albarán" : `En el albarán: <b>${num(l.cant)} uds</b>${l.inhalt ? ` · caja de ${num(l.inhalt)}` : ""}`}</div>
+      <div class="label" style="margin-top:6px">Han llegado</div>
+      <div class="stepper big"><button type="button" id="cMinus" aria-label="Una menos">−</button>
+      <input id="cRecib" inputmode="decimal" value="${comma(start)}" aria-label="Unidades que han llegado">
+      <button type="button" id="cPlus" aria-label="Una más">+</button></div>
+      <div class="diff" id="dQty"></div>
     </div>
-    <textarea id="cNota" placeholder="Nota (por ejemplo: caja dañada, cambio de referencia)" aria-label="Nota">${esc(l.nota)}</textarea>
+    <details class="extras" style="margin-top:0;padding-top:8px"${l.precioReal != null || l.nota ? " open" : ""}><summary>Precio distinto o nota</summary>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <label class="label">Precio real por unidad ${l.precio != null ? `(albarán: ${eur(l.precio)})` : ""}
+        <input id="cPrecio" class="cin mono" inputmode="decimal" value="${comma(l.precioReal)}" placeholder="${l.precio == null ? "0,00" : l.precio.toFixed(2).replace(".", ",")}"></label>
+        <textarea id="cNota" class="cin" placeholder="Nota (caja dañada, otro artículo…)" aria-label="Nota">${esc(l.nota)}</textarea>
+      </div>
+    </details>
     <div class="actions">
-      <button class="btn primary" id="cOk" type="button">${l.recib == null && !l.extra ? `Todo correcto (${num(l.cant)} a ${eur(l.precio)})` : "Hecho"}</button>
-      <button class="btn ghost" id="cReset" type="button">Dejar pendiente</button>
-      ${l.extra ? `<button class="btn ghost danger" id="cDelLine" type="button">Quitar línea</button>` : ""}
+      <button class="btn primary" id="cOk" type="button" style="flex:1;min-height:50px">Guardar</button>
+      ${l.recib != null && !l.extra ? `<button class="btn ghost" id="cReset" type="button">Desmarcar</button>` : ""}
+      ${l.extra ? `<button class="btn ghost danger" id="cDelLine" type="button">Quitar</button>` : ""}
     </div>
   </section>`;
-  const diffs = () => {
-    const dq = $("#dQty"), dp = $("#dPrice");
-    if (l.recib == null || l.extra) dq.textContent = "";
-    else { const d = l.recib - (l.cant || 0); dq.textContent = d === 0 ? "Cantidad correcta" : (d < 0 ? `Faltan ${num(-d)}` : `Sobran ${num(d)}`); dq.style.color = d === 0 ? "var(--ok)" : "var(--warn)"; }
-    if (l.precioReal == null || l.precio == null) { dp.textContent = l.precioReal == null && !l.extra ? "Vacío = mismo precio que el albarán" : ""; dp.style.color = "var(--muted)"; }
-    else { const d = l.precioReal - l.precio; const bad = Math.abs(d) > 0.004; dp.textContent = bad ? `${d > 0 ? "+" : ""}${eur(d)} por unidad · ${eur(d * (l.recib ?? l.cant ?? 0))} en total` : "Precio correcto"; dp.style.color = bad ? "var(--bad)" : "var(--ok)"; }
+  const inp = $("#cRecib");
+  const diff = () => {
+    const v = parseNum(inp.value), dq = $("#dQty");
+    if (v == null || l.extra) { dq.textContent = ""; return; }
+    const d = v - (l.cant || 0);
+    dq.textContent = d === 0 ? "✓ Cantidad correcta" : (d < 0 ? `Faltan ${num(-d)}` : `Sobran ${num(d)}`);
+    dq.style.color = d === 0 ? "var(--ok)" : "var(--warn)";
   };
-  const upd = () => {
-    l.recib = parseNum($("#cRecib").value); l.precioReal = parseNum($("#cPrecio").value); l.nota = $("#cNota").value;
-    if (l.extra) { l.desc = $("#cDesc").value; l.codigo = $("#cCode").value.trim(); }
-    persist(a); diffs();
+  diff();
+  inp.addEventListener("input", diff);
+  inp.addEventListener("focus", () => inp.select());
+  $("#cMinus").onclick = () => { inp.value = comma(Math.max(0, (parseNum(inp.value) ?? 0) - 1)); diff(); };
+  $("#cPlus").onclick = () => { inp.value = comma((parseNum(inp.value) ?? 0) + 1); diff(); };
+  $("#cOk").onclick = () => {
+    l.recib = parseNum(inp.value) ?? 0;
+    l.precioReal = parseNum($("#cPrecio").value);
+    l.nota = $("#cNota").value.trim();
+    if (l.extra) { l.desc = $("#cDesc").value.trim() || "Artículo"; l.codigo = $("#cCode").value.trim(); }
+    persist(a);
+    const d = l.extra ? 0 : l.recib - (l.cant || 0);
+    flash(`Guardado: ${l.desc} · ${num(l.recib)} uds${d < 0 ? ` (faltan ${num(-d)})` : d > 0 ? ` (sobran ${num(d)})` : ""}`, d ? "err" : "ok");
+    UI.selected = null; UI.flashId = l.id; renderCotejo();
   };
-  diffs();
-  ["cRecib", "cPrecio", "cNota", "cDesc", "cCode"].forEach(id => { const el = $("#" + id); if (el) { el.addEventListener("input", upd); el.addEventListener("change", () => { upd(); refreshKeepFocus(); }); } });
-  $("#cMinus").onclick = () => { l.recib = Math.max(0, (l.recib ?? (l.extra ? 0 : l.cant)) - 1); persist(a); renderCotejo(); };
-  $("#cPlus").onclick = () => { l.recib = (l.recib ?? 0) + 1; persist(a); renderCotejo(); };
-  $("#cOk").onclick = () => { if (l.recib == null) l.recib = l.extra ? 1 : l.cant; persist(a); UI.selected = null; flash(`Anotado: ${l.desc}`, "ok"); renderCotejo(); };
-  $("#cReset").onclick = () => { l.recib = null; l.precioReal = null; persist(a); renderCotejo(); };
+  if ($("#cReset")) $("#cReset").onclick = () => { l.recib = null; l.precioReal = null; persist(a); UI.selected = null; flash(`Desmarcado: ${l.desc}`); renderCotejo(); };
   $("#cClose").onclick = () => { UI.selected = null; renderCotejo(); };
   if ($("#cDelLine")) $("#cDelLine").onclick = () => { a.lineas = a.lineas.filter(x => x !== l); persist(a); UI.selected = null; renderCotejo(); };
 }
@@ -403,7 +407,7 @@ async function openScanner() {
   const caps = track.getCapabilities?.() || {};
   $("#sTorch").hidden = !caps.torch;
   try { if (caps.focusMode?.includes("continuous")) await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch { }
-  $("#smsg").textContent = UI.conteo ? "Contar +1: cada lectura suma una unidad. Pulsa Cerrar al acabar." : "Ve escaneando: cada artículo se marca solo. Pulsa Cerrar al acabar.";
+  $("#smsg").textContent = "Ve escaneando: cada artículo se marca solo. Pulsa Cerrar al acabar.";
   $("#smsg").style.color = "";
   const nd = await getNativeDetector();
   const canvas = document.createElement("canvas");
@@ -690,7 +694,6 @@ $("#btnNew").onclick = startNew;
 $("#btnSettings").onclick = () => { UI.mode = "ajustes"; render(); };
 $("#albSel").onchange = e => { if (e.target.value === "__list") { UI.mode = "lista"; render(); } else setActive(e.target.value); };
 $("#btnScan").onclick = openScanner;
-$("#conteo").onchange = e => { UI.conteo = e.target.checked; lsSet("cotejo-conteo", UI.conteo ? "1" : "0"); };
 load();
 render();
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => { });

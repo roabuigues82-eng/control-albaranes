@@ -130,7 +130,14 @@ button.chip[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border
 .ck.done .box{background:var(--ok);border-color:var(--ok);color:var(--sheet)}
 .ck.done .d{text-decoration:line-through;text-decoration-thickness:2px;color:var(--muted)}
 .ck.flash{background:var(--ok-soft);transition:background 1s}
-.more{flex:none;width:44px;border:none;background:transparent;color:var(--muted);font-size:22px;font-weight:700}
+.more{flex:none;width:48px;border:none;background:transparent;color:var(--muted);display:grid;place-items:center}
+.more svg{width:22px;height:22px}
+.cin{width:100%;border:1px solid var(--rule);background:var(--paper);border-radius:8px;padding:8px 10px;min-height:42px;font-size:16px}
+.qty{border:1px solid var(--rule);border-radius:12px;padding:12px;background:var(--paper)}
+.qlab{font-size:15px}
+.qlab b{font-family:var(--f-mono);font-weight:600}
+.stepper.big button{width:56px;min-height:56px;font-size:26px;background:var(--sheet)}
+.stepper.big input{font-size:26px;min-height:56px;background:var(--sheet)}
 .extras{margin-top:12px;border-top:1px dashed var(--rule);padding:12px 4px 0}
 .extras summary{color:var(--muted);font-size:14px}
 /* Bloques de subida y revisión */
@@ -205,7 +212,6 @@ h3{font-size:16px;font-weight:700}
 <nav class="dock" id="dock" hidden>
   <div class="in">
     <button class="btn primary scanbig" id="btnScan" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>Escanear</button>
-    <label><input type="checkbox" id="conteo">Contar +1</label>
   </div>
 </nav>
 
