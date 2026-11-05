@@ -199,6 +199,7 @@ h3{font-size:16px;font-weight:700}
 .scanner .frame::after{content:"";position:absolute;left:6%;right:6%;top:50%;height:2px;background:#ff5a4f}
 .scanner .bottom{position:absolute;left:0;right:0;bottom:0;padding:16px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:10px;align-items:center;background:linear-gradient(transparent,rgba(0,0,0,.7))}
 .scanner .smsg{color:#fff;font-size:15px;text-align:center;min-height:1.5em}
+.scanner .shint{color:#ddd;font-size:13px;text-align:center}
 .scanner .sbtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .scanner .sbtn{background:#fff;color:#111;border:none;border-radius:999px;padding:12px 22px;font-weight:700;min-height:46px}
 
@@ -224,7 +225,7 @@ h3{font-size:16px;font-weight:700}
     <select class="albsel" id="albSel" aria-label="Albarán activo" style="flex-basis:100%"></select>
   </header>
   <div id="view"></div>
-  <p class="foot">Los albaranes se guardan en este móvil. En Ajustes puedes descargar una copia de seguridad. · Versión 15</p>
+  <p class="foot">Los albaranes se guardan en este móvil. En Ajustes puedes descargar una copia de seguridad. · Versión 16</p>
 </div>
 
 <nav class="dock" id="dock" hidden>
@@ -238,8 +239,10 @@ h3{font-size:16px;font-weight:700}
   <div class="frame"></div>
   <div class="bottom">
     <div class="smsg" id="smsg">Apunta al código de barras</div>
+    <div class="shint">Acércate a unos 10–15 cm, con el código entero dentro del recuadro y buena luz.</div>
     <div class="sbtns">
       <button class="sbtn" id="sTorch" type="button" hidden>Linterna</button>
+      <button class="sbtn" id="sPhoto" type="button">Hacer foto</button>
       <button class="sbtn" id="sClose" type="button">Cerrar</button>
     </div>
   </div>

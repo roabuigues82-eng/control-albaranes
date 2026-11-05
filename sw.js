@@ -1,5 +1,5 @@
 // Guarda la app para que abra sin conexión. Sube VERSION cada vez que cambies index.html o app.js.
-const VERSION = "cotejo-v15";
+const VERSION = "cotejo-v16";
 const SHELL = ["./", "index.html", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png", "plantilla_albaran.xlsx",
   "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js", "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",

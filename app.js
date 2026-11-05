@@ -421,7 +421,7 @@ function zx() {
   if (zxReader || !window.ZXing) return zxReader;
   const Z = window.ZXing, hints = new Map();
   hints.set(Z.DecodeHintType.TRY_HARDER, true);
-  hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E, Z.BarcodeFormat.CODE_128, Z.BarcodeFormat.CODE_39, Z.BarcodeFormat.ITF, Z.BarcodeFormat.QR_CODE, Z.BarcodeFormat.DATA_MATRIX]);
+  hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E, Z.BarcodeFormat.CODE_128, Z.BarcodeFormat.CODE_39, Z.BarcodeFormat.CODE_93, Z.BarcodeFormat.CODABAR, Z.BarcodeFormat.ITF, Z.BarcodeFormat.RSS_14, Z.BarcodeFormat.QR_CODE, Z.BarcodeFormat.DATA_MATRIX, Z.BarcodeFormat.PDF_417]);
   zxReader = new Z.MultiFormatReader(); zxReader.setHints(hints);
   return zxReader;
 }
@@ -441,7 +441,7 @@ async function getNativeDetector() {
   if ("BarcodeDetector" in window) {
     try {
       const fm = await BarcodeDetector.getSupportedFormats();
-      const want = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "qr_code", "data_matrix"].filter(f => fm.includes(f));
+      const want = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "code_93", "codabar", "itf", "qr_code", "data_matrix", "pdf417", "aztec"].filter(f => fm.includes(f));
       if (want.length) nativeDetector = new BarcodeDetector({ formats: want });
     } catch { }
   }
@@ -477,7 +477,7 @@ $("#camInput").addEventListener("change", async e => {
 });
 
 /* escáner en vivo con la cámara */
-const SC = { stream: null, timer: null, last: "", lastAt: 0, torch: false, audio: null, busy: false };
+const SC = { stream: null, timer: null, last: "", lastAt: 0, torch: false, audio: null, busy: false, n: 0 };
 function beep() {
   try {
     const ctx = SC.audio; if (!ctx) return;
@@ -516,19 +516,25 @@ async function openScanner() {
       try {
         if (nd) { const r = await nd.detect(v); code = r[0]?.rawValue || null; }
         else {
-          // recorte de la franja central donde está el marco
-          const vw = v.videoWidth, vh = v.videoHeight;
-          const cw = Math.round(vw * 0.9), ch = Math.round(vh * 0.4);
-          const sc = Math.min(1, 1000 / cw);
-          canvas.width = Math.round(cw * sc); canvas.height = Math.round(ch * sc);
-          canvas.getContext("2d", { willReadFrequently: true }).drawImage(v, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, canvas.width, canvas.height);
+          // se van alternando: franja central, la misma franja girada (código en vertical) y la imagen entera
+          const vw = v.videoWidth, vh = v.videoHeight, mode = SC.n++ % 3;
+          const cx = canvas.getContext("2d", { willReadFrequently: true });
+          let sx, sy, sw, shh;
+          if (mode === 2) { sx = 0; sy = 0; sw = vw; shh = vh; }
+          else { sw = Math.round(vw * 0.9); shh = Math.round(vh * 0.45); sx = (vw - sw) / 2; sy = (vh - shh) / 2; }
+          const sc = Math.min(1, (mode === 2 ? 1600 : 1100) / Math.max(sw, shh));
+          const w = Math.round(sw * sc), h = Math.round(shh * sc);
+          cx.setTransform(1, 0, 0, 1, 0, 0);
+          if (mode === 1) { canvas.width = h; canvas.height = w; cx.translate(h, 0); cx.rotate(Math.PI / 2); }
+          else { canvas.width = w; canvas.height = h; }
+          cx.drawImage(v, sx, sy, sw, shh, 0, 0, w, h);
           code = decodeCanvas(canvas);
         }
       } catch { }
       SC.busy = false;
       if (code) onLiveCode(code);
     }
-    SC.timer = setTimeout(tick, nd ? 120 : 180);
+    SC.timer = setTimeout(tick, nd ? 120 : 60);
   };
   tick();
 }
@@ -551,6 +557,7 @@ function closeScanner() {
   $("#video").srcObject = null; $("#scanner").hidden = true;
 }
 $("#sClose").onclick = closeScanner;
+$("#sPhoto").onclick = () => { closeScanner(); $("#camInput").click(); };
 $("#sTorch").onclick = async () => {
   const t = SC.stream?.getVideoTracks()[0]; if (!t) return;
   SC.torch = !SC.torch;
