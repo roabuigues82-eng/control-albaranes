@@ -4,16 +4,18 @@ App web para el móvil que ayuda a comprobar la mercancía recibida contra el al
 
 ## Cómo se usa
 
-1. **+ Nuevo → Importar Excel**: elige el Excel del albarán. Se abre la lista de artículos.
+1. **+ Nuevo → Importar PDF o Excel**: elige el albarán, o varios a la vez. Se abre la lista de artículos.
+   - El PDF de TEDi (Lieferschein) se lee directamente: el código del artículo es el AUFTRAG de 10 cifras.
+   - Si hay varios albaranes cargados, al escanear se busca el artículo en todos y se marca en el suyo.
 2. Marca cada artículo al encontrarlo, de una de estas formas:
    - toca la línea;
-   - pulsa **Escanear** y apunta la cámara al código de barras;
+   - pulsa **Escanear** y apunta la cámara al código de barras (se usan sus 10 primeras cifras);
    - escribe el código en el buscador.
 
    Lo marcado queda con ✓ y tachado.
 3. Arriba se ve el progreso (por ejemplo, 120 / 364). La pestaña **Pendientes** muestra lo que falta por encontrar.
 4. Si una cantidad o un precio no cuadra, toca **⋯** en ese artículo para corregirlo.
-5. **Más opciones** permite exportar el resultado a Excel (CSV) o borrar el albarán.
+5. La pestaña **Diferencias** muestra las faltas y sobras con su importe. En **Ver todos los albaranes** se descargan las diferencias de todos en un Excel.
 
 ## Formato del Excel
 

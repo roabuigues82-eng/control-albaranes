@@ -156,6 +156,8 @@ button.chip[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border
 .stepper.big input{font-size:26px;min-height:56px;background:var(--sheet)}
 .extras{margin-top:12px;border-top:1px dashed var(--rule);padding:12px 4px 0}
 .extras summary{color:var(--muted);font-size:14px}
+.allalb{font-size:13px;color:var(--muted);margin-top:4px}
+.allalb button{border:none;background:none;color:var(--carbon);font-weight:600;padding:0;text-decoration:underline}
 /* Bloques de subida y revisión */
 .pickbtns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pickbtns .btn{min-height:64px;flex-direction:column;gap:4px}
@@ -222,7 +224,7 @@ h3{font-size:16px;font-weight:700}
     <select class="albsel" id="albSel" aria-label="Albarán activo" style="flex-basis:100%"></select>
   </header>
   <div id="view"></div>
-  <p class="foot">Los albaranes se guardan en este móvil. En Ajustes puedes descargar una copia de seguridad. · Versión 13</p>
+  <p class="foot">Los albaranes se guardan en este móvil. En Ajustes puedes descargar una copia de seguridad. · Versión 14</p>
 </div>
 
 <nav class="dock" id="dock" hidden>
@@ -244,7 +246,7 @@ h3{font-size:16px;font-weight:700}
 </div>
 
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
-<input type="file" id="xlsInput" hidden>
+<input type="file" id="xlsInput" multiple hidden>
 <input type="file" id="importInput" accept="application/json,.json" hidden>
 
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>

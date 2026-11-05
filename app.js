@@ -91,7 +91,7 @@ function setActive(id) { S.active = id; lsSet("cotejo-activo", id); Object.assig
 function render() {
   const sel = $("#albSel");
   const albs = [...S.albs.values()].sort((a, b) => (b.creado || 0) - (a.creado || 0));
-  sel.innerHTML = albs.length ? albs.map(a => `<option value="${a.id}" ${a.id === S.active ? "selected" : ""}>${esc(a.proveedor || "Sin proveedor")} · ${esc(a.numero || "s/n")}${a.ejemplo ? " (ejemplo)" : ""}</option>`).join("") + `<option value="__list">Ver todos los albaranes…</option>` : `<option>Sin albaranes</option>`;
+  sel.innerHTML = albs.length ? albs.map(a => `<option value="${a.id}" ${a.id === S.active ? "selected" : ""}>${esc(a.proveedor || "Sin proveedor")} · ${esc(a.numero || "s/n")}${a.ejemplo ? " (ejemplo)" : ""}</option>`).join("") + `<option value="__list">Ver todos los albaranes (${albs.length})…</option>` : `<option>Sin albaranes</option>`;
   sel.disabled = !albs.length;
   $("#dock").hidden = !(UI.mode === "cotejo" && cur());
   if (UI.mode === "nuevo") return renderNew();
@@ -104,8 +104,8 @@ function render() {
 function renderEmpty() {
   $("#view").innerHTML = `<section class="sheet empty">
     <h2>Todavía no hay albaranes</h2>
-    <p>Sube la foto o el PDF de un albarán y la app sacará cada línea: código, descripción, cantidad y precio. Luego escaneas o escribes el código de cada artículo que llega y anotas lo que has recibido de verdad.</p>
-    <div class="row"><button class="btn primary" id="eNew" type="button">Subir un albarán</button>
+    <p>Importa el PDF o el Excel del albarán (o varios a la vez). Luego escanea cada artículo que llega y se irá marcando en la lista.</p>
+    <div class="row"><button class="btn primary" id="eNew" type="button">Importar albarán</button>
     <button class="btn" id="eDemo" type="button">Probar con un albarán de ejemplo</button></div>
   </section>`;
   $("#eNew").onclick = startNew;
@@ -113,18 +113,28 @@ function renderEmpty() {
 }
 
 function renderList(albs) {
-  $("#view").innerHTML = `<section class="sheet"><div class="albhead"><h2>Todos los albaranes</h2>
+  let F = 0, T = 0, neto = 0;
+  albs.forEach(x => { const st = stats(x); F += st.revisadas; T += st.total; neto += diffs(x).neto; });
+  $("#view").innerHTML = `<section class="sheet"><div class="albhead"><h2>Albaranes cargados</h2>
     <button class="btn ghost" id="lBack" type="button">Volver</button></div>
+    <p class="muted" style="margin:6px 0 0;font-size:14px">Al escanear, la app busca el artículo en todos estos albaranes y lo marca en el suyo.</p>
+    <div class="difsum" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+      <div class="pos"><span class="label">Vistos</span><b>${F} / ${T}</b><span>${albs.length} albaranes</span></div>
+      <div class="${neto < 0 ? "neg" : "pos"}"><span class="label">Diferencias</span><b>${sgn(neto, eur)}</b><span>&nbsp;</span></div>
+    </div>
     <div class="list">${albs.map(a => {
       const s = stats(a); const pc = s.total ? Math.round(s.revisadas / s.total * 100) : 0;
-      const inc = s.c.falta + s.c.sobra + s.c.precio + s.c.extra;
+      const D = diffs(a);
       return `<div class="it"><div style="min-width:0">
         <strong>${esc(a.proveedor || "Sin proveedor")}</strong> <span class="mono muted">Nº ${esc(a.numero || "s/n")}</span>${a.ejemplo ? ' <span class="pill s-extra">Ejemplo</span>' : ""}
-        <div class="muted" style="font-size:13px">${esc(fmtDate(a.fecha))} · ${s.total} líneas · ${s.revisadas} revisadas${inc ? ` · <span style="color:var(--bad)">${inc} incidencias</span>` : ""}</div></div>
-        <div style="display:flex;gap:10px;align-items:center"><div class="bar" aria-label="${pc}% revisado"><i style="width:${pc}%"></i></div>
+        <div class="muted" style="font-size:13px">${esc(fmtDate(a.fecha))} · ${s.revisadas} / ${s.total} vistos${D.rows.length ? ` · <span style="color:var(--bad)">${D.rows.length} con diferencia (${sgn(D.neto, eur)})</span>` : ""}</div></div>
+        <div style="display:flex;gap:10px;align-items:center"><div class="bar" aria-label="${pc}% visto"><i style="width:${pc}%"></i></div>
         <button class="btn" data-open="${a.id}" type="button">Abrir</button></div></div>`;
-    }).join("")}</div></section>`;
+    }).join("")}</div>
+    <button class="btn" id="lDifAll" type="button" style="width:100%;margin-top:12px">Descargar diferencias de todos (Excel)</button>
+  </section>`;
   $("#lBack").onclick = () => { UI.mode = "cotejo"; render(); };
+  $("#lDifAll").onclick = () => exportDiffXlsx(albs);
   $("#view").querySelectorAll("[data-open]").forEach(b => b.onclick = () => setActive(b.dataset.open));
 }
 
@@ -144,6 +154,7 @@ function renderCotejo() {
       <div class="field">${ICON.bars}<input id="q" type="search" inputmode="search" autocomplete="off" enterkeyhint="search" placeholder="Escribe el código" aria-label="Código del artículo"></div>
     </div>
     <div class="progress-line"><div class="pbar"><i style="width:${pc}%"></i></div><span class="mono"><b>${found}</b> / ${total}</span></div>
+    ${S.albs.size > 1 ? `<div class="allalb">Escaneando en ${S.albs.size} albaranes · <button type="button" id="goList">ver todos</button></div>` : ""}
     <div id="msg" class="msg ${UI.msgType}" role="status">${esc(UI.msg)}</div>
   </div>
   <div id="cardSlot"></div>
@@ -182,7 +193,8 @@ function renderCotejo() {
   const q = $("#q");
   q.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); search(q.value); q.blur(); } });
   $("#view").querySelectorAll("[data-f]").forEach(b => b.onclick = () => { UI.filter = b.dataset.f; renderCotejo(); });
-  if ($("#btnDifXlsx")) $("#btnDifXlsx").onclick = () => exportDiffXlsx(a);
+  if ($("#btnDifXlsx")) $("#btnDifXlsx").onclick = () => exportDiffXlsx([a]);
+  if ($("#goList")) $("#goList").onclick = () => { UI.mode = "lista"; render(); };
   $("#view").querySelectorAll("[data-tog]").forEach(el => el.onclick = () => toggleLine(el.dataset.tog));
   $("#view").querySelectorAll("[data-edit]").forEach(el => el.onclick = () => { UI.selected = el.dataset.edit; UI.matches = null; renderCotejo(); scrollTo({ top: 0, behavior: "smooth" }); });
   $("#btnExport").onclick = exportCsv;
@@ -239,26 +251,34 @@ function renderDiffs(D, pend) {
     <ul class="checklist">${D.rows.map(row).join("") || `<li class="muted" style="padding:16px">Sin diferencias por ahora. Cuando cambies una cantidad con el lápiz ✎, aparecerá aquí.</li>`}</ul>
     <button class="btn" id="btnDifXlsx" type="button" style="width:100%;margin-top:10px">Descargar hoja de diferencias (Excel)</button>`;
 }
-async function exportDiffXlsx(a) {
+async function exportDiffXlsx(albs) {
   flash("Preparando el Excel…");
   try { await loadXlsx(); } catch { flash("No se pudo preparar el Excel. Revisa la conexión a internet.", "err"); return; }
-  const D = diffs(a);
   const r2 = n => Math.round(n * 100) / 100;
-  const head = [["Albarán", a.numero || ""], ["Proveedor", a.proveedor || ""], ["Fecha", fmtDate(a.fecha)], []];
-  const cols = ["Código", "Descripción", "Cant. albarán", "Cant. recibida", "Diferencia uds", "Precio albarán", "Precio real", "Diferencia €", "Tipo", "Nota"];
-  const body = D.rows.map(r => [r.l.codigo, r.l.desc, r.l.extra ? "" : r.l.cant, r.l.recib, r.du, r.l.precio ?? "", r.l.precioReal ?? "", r2(r.euros), r.tipo, r.l.nota || ""]);
-  const foot = [[], ["Faltan", "", "", "", -D.faltaU, "", "", r2(D.faltaE)], ["Sobran", "", "", "", D.sobraU, "", "", r2(D.sobraE)], ["Diferencia de precios", "", "", "", "", "", "", r2(D.precioE)], ["TOTAL", "", "", "", D.sobraU - D.faltaU, "", "", r2(D.neto)]];
+  const many = albs.length > 1;
+  const cols = [...(many ? ["Albarán"] : []), "Código", "Descripción", "Cant. albarán", "Cant. recibida", "Diferencia uds", "Precio albarán", "Precio real", "Diferencia €", "Tipo", "Nota"];
+  const pre = x => many ? [x.numero || ""] : [];
+  let body = [], pend = [], T = { faltaU: 0, faltaE: 0, sobraU: 0, sobraE: 0, precioE: 0, neto: 0 };
+  albs.forEach(x => {
+    const D = diffs(x);
+    D.rows.forEach(r => body.push([...pre(x), r.l.codigo, r.l.desc, r.l.extra ? "" : r.l.cant, r.l.recib, r.du, r.l.precio ?? "", r.l.precioReal ?? "", r2(r.euros), r.tipo, r.l.nota || ""]));
+    for (const k in T) T[k] += D[k];
+    x.lineas.filter(l => l.recib == null).forEach(l => pend.push([...pre(x), l.codigo, l.desc, l.cant, l.precio ?? "", r2((l.cant || 0) * (l.precio || 0))]));
+  });
+  const head = many ? [["Albaranes", albs.map(x => x.numero || "s/n").join(", ")], ["Fecha del informe", new Date().toLocaleDateString("es-ES")], []]
+    : [["Albarán", albs[0].numero || ""], ["Proveedor", albs[0].proveedor || ""], ["Fecha", fmtDate(albs[0].fecha)], []];
+  const pad = many ? [""] : [];
+  const foot = [[], ["Faltan", ...pad, "", "", "", -T.faltaU, "", "", r2(T.faltaE)], ["Sobran", ...pad, "", "", "", T.sobraU, "", "", r2(T.sobraE)], ["Diferencia de precios", ...pad, "", "", "", "", "", "", r2(T.precioE)], ["TOTAL", ...pad, "", "", "", T.sobraU - T.faltaU, "", "", r2(T.neto)]];
   const ws = XLSX.utils.aoa_to_sheet([...head, cols, ...body, ...foot]);
-  ws["!cols"] = [{ wch: 13 }, { wch: 36 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 12 }, { wch: 16 }, { wch: 30 }];
-  const pendRows = a.lineas.filter(l => l.recib == null).map(l => [l.codigo, l.desc, l.cant, l.precio ?? "", r2((l.cant || 0) * (l.precio || 0))]);
-  const ws2 = XLSX.utils.aoa_to_sheet([["Artículos sin marcar (aún no encontrados)"], [], ["Código", "Descripción", "Cant. albarán", "Precio", "Importe"], ...pendRows]);
-  ws2["!cols"] = [{ wch: 13 }, { wch: 36 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+  ws["!cols"] = [...(many ? [{ wch: 11 }] : []), { wch: 13 }, { wch: 36 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 12 }, { wch: 16 }, { wch: 30 }];
+  const ws2 = XLSX.utils.aoa_to_sheet([["Artículos sin marcar (aún no encontrados)"], [], [...(many ? ["Albarán"] : []), "Código", "Descripción", "Cant. albarán", "Precio", "Importe"], ...pend]);
+  ws2["!cols"] = [...(many ? [{ wch: 11 }] : []), { wch: 13 }, { wch: 36 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Diferencias");
   XLSX.utils.book_append_sheet(wb, ws2, "Sin marcar");
   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
   const safe = t => String(t || "").replace(/[^\w\-]+/g, "_");
-  downloadFile(`diferencias_${safe(a.numero) || "albaran"}.xlsx`, out, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  downloadFile(many ? `diferencias_${albs.length}_albaranes.xlsx` : `diferencias_${safe(albs[0].numero) || "albaran"}.xlsx`, out, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   flash("Hoja de diferencias descargada.", "ok");
 }
 
@@ -267,9 +287,10 @@ function renderCard() {
   const a = cur();
   if (UI.matches) {
     slot.innerHTML = `<section class="card"><div class="top"><h3>Varias coincidencias: elige el artículo</h3><button class="iconbtn" id="cClose" aria-label="Cerrar" type="button">${ICON.x}</button></div>
+      ${UI.matchAlb && UI.matchAlb !== S.active ? `<p class="muted" style="margin:0">Del albarán ${esc(albName(S.albs.get(UI.matchAlb)))}</p>` : ""}
       <div class="picklist">${UI.matches.map(l => `<button type="button" data-pick="${l.id}"><span><span class="mono">${esc(l.codigo || l.ean)}</span> · ${esc(l.desc)}</span><span class="pill s-${status(l)}">${ST_LABEL[status(l)]}</span></button>`).join("")}</div></section>`;
-    slot.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => { UI.matches = null; selectLine(b.dataset.pick, UI.conteo); });
-    $("#cClose").onclick = () => { UI.matches = null; renderCard(); };
+    slot.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => { UI.matches = null; selectLine(b.dataset.pick, false); });
+    $("#cClose").onclick = () => { UI.matches = null; UI.matchAlb = null; renderCard(); };
     return;
   }
   const l = a.lineas.find(x => x.id === UI.selected);
@@ -334,47 +355,63 @@ function renderCard() {
 function refreshKeepFocus() { const y = scrollY; renderCotejo(); scrollTo(0, y); }
 
 /* ---------- búsqueda ---------- */
-function findIn(alb, raw) {
+/* El código de barras de la etiqueta lleva más números: el código del artículo son los 10 primeros. */
+function scanCandidates(raw) {
   const q = norm(raw); if (!q) return [];
-  const qz = stripZ(q);
-  const exact = alb.lineas.filter(l => [l.codigo, l.ean].some(c => { const n = norm(c); return n && (n === q || stripZ(n) === qz); }));
-  if (exact.length) return exact;
-  // código de barras largo que lleva dentro el código del albarán (con o sin su último dígito)
-  if (q.length >= 10) {
-    const inside = alb.lineas.filter(l => [l.codigo, l.ean].some(c => { const n = norm(c); return n.length >= 8 && (q.includes(n) || (n.length >= 10 && q.includes(n.slice(0, -1)))); }));
-    if (inside.length) return inside;
+  const out = [];
+  if (/^\d{11,}$/.test(q)) out.push(q.slice(0, 10));
+  out.push(q);
+  return out;
+}
+/* coincidencia exacta (o código de barras que empieza por el código) */
+function findStrict(alb, raw) {
+  for (const q of scanCandidates(raw)) {
+    const qz = stripZ(q);
+    const m = alb.lineas.filter(l => [l.codigo, l.ean, l.pos].some(c => { const n = norm(c); return n && (n === q || stripZ(n) === qz); }));
+    if (m.length) return m;
   }
-  if (q.length < 3) return [];
+  const q = norm(raw);
+  if (q.length >= 11) {
+    const m = alb.lineas.filter(l => [l.codigo, l.ean].some(c => { const n = norm(c); return n.length >= 8 && (q.startsWith(n) || q.includes(n)); }));
+    if (m.length) return m;
+  }
+  return [];
+}
+/* búsqueda escrita: también por parte del código o de la descripción */
+function findLoose(alb, raw) {
+  const q = norm(raw); if (q.length < 3) return [];
   return alb.lineas.filter(l => norm(l.codigo).includes(q) || norm(l.ean).includes(q) || norm(l.desc).includes(q));
 }
-/* devuelve true si encontró el artículo */
+const albName = x => `Nº ${x.numero || "s/n"}`;
+/* devuelve true si encontró el artículo (en este albarán o en cualquier otro cargado) */
 function search(raw) {
   const a = cur(); const code = String(raw || "").trim();
   if (!a || !code) return false;
   if ($("#q")) $("#q").value = "";
-  const m = findIn(a, code);
-  if (m.length === 1) { UI.matches = null; selectLine(m[0].id, UI.conteo); return true; }
-  if (m.length > 1) { UI.selected = null; UI.matches = m; flash(`${m.length} artículos coinciden con «${code}»`); renderCard(); return true; }
-  const other = [...S.albs.values()].find(x => x.id !== a.id && x.lineas.some(l => [l.codigo, l.ean].some(c => c && stripZ(norm(c)) === stripZ(norm(code)))));
+  let alb = a, m = findStrict(a, code);
+  if (!m.length) for (const x of S.albs.values()) { if (x.id === a.id) continue; const mm = findStrict(x, code); if (mm.length) { alb = x; m = mm; break; } }
+  if (!m.length) m = findLoose(a, code);
+  if (m.length === 1) { UI.matches = null; selectLine(m[0].id, false, alb); return true; }
+  if (m.length > 1) { UI.selected = null; UI.matches = m; UI.matchAlb = alb.id; flash(`${m.length} artículos coinciden con «${code}»`); renderCard(); return true; }
   UI.matches = null; UI.selected = null;
-  $("#cardSlot").innerHTML = `<section class="card s-extra"><div class="top"><div><div class="desc">«${esc(code)}» no está en este albarán</div>
-    <div class="muted" style="font-size:14px">${other ? `Aparece en el albarán de ${esc(other.proveedor || "otro proveedor")} Nº ${esc(other.numero || "s/n")}.` : "Puede ser un artículo que no os facturan o un código distinto en la etiqueta."}</div></div>
+  const shown = scanCandidates(code)[0];
+  $("#cardSlot").innerHTML = `<section class="card s-extra"><div class="top" style="flex-wrap:nowrap"><div style="min-width:0;flex:1"><div class="desc">«${esc(shown)}» no está en ${S.albs.size > 1 ? "ningún albarán cargado" : "este albarán"}</div>
+    <div class="muted" style="font-size:14px">Puede ser un artículo que no os facturan o un código distinto en la etiqueta.${shown !== norm(code) ? ` Código leído completo: ${esc(code)}` : ""}</div></div>
     <button class="iconbtn" id="nfClose" aria-label="Cerrar" type="button">${ICON.x}</button></div>
-    <div class="actions">${other ? `<button class="btn primary" id="nfGo" type="button">Ir a ese albarán</button>` : ""}
-    <button class="btn" id="nfAdd" type="button">Anotar como recibido fuera de albarán</button></div></section>`;
-  flash(`Sin coincidencias para «${code}»`, "err");
+    <div class="actions"><button class="btn" id="nfAdd" type="button">Anotar como recibido fuera de albarán</button></div></section>`;
+  flash(`Sin coincidencias para «${shown}»`, "err");
   $("#nfClose").onclick = () => { $("#cardSlot").innerHTML = ""; };
-  if (other) $("#nfGo").onclick = () => { setActive(other.id); search(code); };
-  $("#nfAdd").onclick = () => { const l = mkLine({ codigo: code, descripcion: "Artículo sin descripción", extra: true }); l.recib = 1; a.lineas.push(l); persist(a); UI.selected = l.id; renderCotejo(); };
+  $("#nfAdd").onclick = () => { const l = mkLine({ codigo: shown, descripcion: "Artículo sin descripción", extra: true }); l.recib = 1; a.lineas.push(l); persist(a); UI.selected = l.id; renderCotejo(); };
   return false;
 }
-function selectLine(id, count) {
-  const a = cur(); const l = a.lineas.find(x => x.id === id); if (!l) return;
-  if (count) { l.recib = (l.recib ?? 0) + 1; flash(`+1 ${l.desc} → ${num(l.recib)} de ${num(l.cant)}`, l.recib > l.cant ? "err" : "ok"); }
-  else if (l.recib == null) { l.recib = l.extra ? 1 : l.cant; flash(`✓ ${l.desc} · ${num(l.cant)} uds · ${eur(l.precio)}`, "ok"); }
-  else flash(`Ya estaba marcado: ${l.desc}`);
-  persist(a);
-  UI.selected = null; UI.matches = null; UI.flashId = id;
+function selectLine(id, count, alb) {
+  alb = alb || S.albs.get(UI.matchAlb) || cur();
+  const l = alb.lineas.find(x => x.id === id); if (!l) return;
+  const other = alb.id !== S.active ? ` · del albarán ${albName(alb)}` : "";
+  if (l.recib == null) { l.recib = l.extra ? 1 : l.cant; flash(`✓ ${l.desc} · ${num(l.cant)} uds · ${eur(l.precio)}${other}`, "ok"); }
+  else flash(`Ya estaba marcado: ${l.desc}${other}`);
+  persist(alb);
+  UI.selected = null; UI.matches = null; UI.matchAlb = null; UI.flashId = id;
   renderCotejo();
 }
 
@@ -567,11 +604,12 @@ function renderNew() {
   $("#view").innerHTML = `<section class="sheet" style="display:flex;flex-direction:column;gap:14px">
     <div class="albhead"><h2>Nuevo albarán</h2><button class="btn ghost" id="nBack" type="button">Cancelar</button></div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <p class="muted" style="margin:0;font-size:14px">Elige el Excel del albarán. Se abre directamente la lista para ir marcando.</p>
-      <button class="btn primary" id="nExcel" type="button" style="min-height:56px" ${reading ? "disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12l4 5M13 12l-4 5"/></svg>Importar Excel</button>
+      <p class="muted" style="margin:0;font-size:14px">Elige el PDF o el Excel del albarán. Puedes elegir varios a la vez: al escanear, la app busca en todos.</p>
+      <button class="btn primary" id="nExcel" type="button" style="min-height:56px" ${reading ? "disabled" : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12l4 5M13 12l-4 5"/></svg>${reading ? "Leyendo…" : "Importar PDF o Excel"}</button>
       <a class="btn ghost" href="plantilla_albaran.xlsx" download="plantilla_albaran.xlsx">Descargar plantilla de Excel</a>
     </div>
-    ${d.error ? `<p class="msg err" style="margin:0">${esc(d.error)}</p>` : ""}
+    ${reading ? `<div class="progress"><span class="spin"></span><span>${esc(d.note || "")}</span></div>` : ""}
+    ${d.error ? `<p class="msg err" style="margin:0;white-space:pre-line">${esc(d.error)}</p>` : ""}
   </section>`;
   $("#nBack").onclick = () => { d.ctl?.abort(); UI.mode = "cotejo"; render(); };
   if (!reading) $("#nExcel").onclick = () => $("#xlsInput").click();
@@ -641,38 +679,169 @@ function parseSheet(rows) {
   }
   return { ...head, lineas };
 }
-async function importExcel(file) {
-  if (!UI.draft) UI.draft = { files: [], lineas: [], phase: "pick", error: "" };
-  const d = UI.draft;
-  if (!/\.(xlsx|xlsm|xls|csv|ods)$/i.test(file.name || "") && !/sheet|excel|csv/i.test(file.type || "")) {
-    d.error = `«${file.name}» no parece un Excel. Elige un archivo .xlsx, .xls o .csv.`; UI.mode = "nuevo"; return renderNew();
+/* ---------- importar PDF ---------- */
+const PDF_BASE = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+function loadScript(src) { return new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); }); }
+let pdfLoading = null;
+function loadPdf() {
+  if (window.pdfjsLib) return Promise.resolve();
+  return pdfLoading ||= (async () => {
+    await loadScript(PDF_BASE + "pdf.worker.min.js");
+    await loadScript(PDF_BASE + "pdf.min.js");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_BASE + "pdf.worker.min.js";
+  })().catch(() => { pdfLoading = null; throw new Error("pdf"); });
+}
+/* filas de texto del PDF, con la posición de cada palabra */
+async function pdfRows(buf) {
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  const rows = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const tc = await (await doc.getPage(p)).getTextContent();
+    const toks = [], cells = [];
+    tc.items.forEach(it => {
+      const str = it.str; if (!str || !str.trim()) return;
+      const x0 = it.transform[4], y = it.transform[5], cw = (it.width || 0) / str.length;
+      cells.push({ x: x0, y, s: str.trim() });
+      const re = /\S+/g; let m;
+      while ((m = re.exec(str))) toks.push({ x: x0 + m.index * cw, y, s: m[0] });
+    });
+    const group = list => {
+      list.sort((a, b) => b.y - a.y || a.x - b.x);
+      const out = []; let cur = null;
+      for (const t of list) { if (cur && Math.abs(cur.y - t.y) <= 2.5) cur.items.push(t); else { cur = { page: p, y: t.y, items: [t] }; out.push(cur); } }
+      out.forEach(r => r.items.sort((a, b) => a.x - b.x));
+      return out;
+    };
+    const rt = group(toks), rc = group(cells);
+    rt.forEach((r, i) => rows.push({ page: p, y: r.y, toks: r.items, cells: (rc.find(c => Math.abs(c.y - r.y) <= 2.5) || { items: [] }).items.map(c => c.s) }));
   }
-  d.error = ""; flash("");
-  try {
+  return rows;
+}
+/* albarán de TEDi (Lieferschein): LFD, POS NR, AUFTRAG, BEZEICHNUNG, WGR, DNP, MENGE, KARTON-INHALT, VK.
+   Debajo de POS NR y AUFTRAG va un dígito más: el código del artículo = AUFTRAG (9) + ese dígito = 10 cifras. */
+function parseTedi(rows) {
+  const all = rows.map(r => r.toks.map(t => t.s).join(" ")).join("\n");
+  const numero = (/Lieferschein\s*Nr\.?\s*(\d+)/i.exec(all) || [])[1] || "";
+  const von = (/von\s+(\d{3,5})\s+an\s+(\d{3,5})/i.exec(all) || [])[1] || "";
+  const fm = /Belegdatum:?\s*(\d{1,2})\.(\d{1,2})\.(\d{4})/i.exec(all);
+  const fecha = fm ? `${fm[3]}-${fm[2].padStart(2, "0")}-${fm[1].padStart(2, "0")}` : "";
+  const isInt = s => /^\d+$/.test(s), isPrice = s => /^\d{1,4},\d{2}$/.test(s);
+  let wgrX = null; const lineas = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i], tk = r.toks.map(t => t.s);
+    const h = r.toks.find(t => /^WGR$/i.test(t.s));
+    if (h && r.toks.some(t => /^MENGE$/i.test(t.s))) { wgrX = h.x; continue; }
+    if (!/^\d{1,4}$/.test(tk[0] || "")) continue;
+    // final de la fila: precio y EUR
+    let k = tk.length - 1;
+    if (/^EUR$/i.test(tk[k])) k--;
+    let vk = null;
+    if (isPrice(tk[k])) { vk = parseNum(tk[k]); k--; } else if (/^\d{1,4},\d{2}EUR$/i.test(tk[k])) { vk = parseNum(tk[k].replace(/EUR/i, "")); k--; }
+    const mainRow = /^\d{6,7}$/.test(tk[1] || "") && /^\d{9,10}$/.test(tk[2] || "");
+    const noArt = tk[1] === "0" && isInt(tk[2] || "");
+    if (!mainRow && !noArt) continue;
+    const start = mainRow ? 3 : 2;
+    const mid = r.toks.slice(start, k + 1);
+    // números del final: [WGR] [DNP] MENGE KARTON
+    let descToks, ints;
+    if (wgrX != null) {
+      const cut = mid.findIndex(t => t.x >= wgrX - 12 && isInt(t.s));
+      descToks = cut < 0 ? mid : mid.slice(0, cut); ints = cut < 0 ? [] : mid.slice(cut).map(t => t.s).filter(isInt);
+    } else {
+      let j = mid.length; while (j > 0 && isInt(mid[j - 1].s) && mid.length - j < 4) j--;
+      let tail = mid.slice(j).map(t => t.s);
+      if (tail.length === 4 && !/^\d{3}$/.test(tail[0])) { j++; tail = tail.slice(1); }
+      descToks = mid.slice(0, j); ints = tail;
+    }
+    let wgr = "", menge = null, karton = null;
+    if (mainRow) {
+      if (ints.length >= 4) { wgr = ints[0]; menge = +ints[2]; karton = +ints[3]; }
+      else if (ints.length === 3) { wgr = ints[0]; menge = +ints[1]; karton = +ints[2]; }
+      else if (ints.length === 2) { menge = +ints[0]; karton = +ints[1]; }
+      else if (ints.length === 1) menge = +ints[0];
+    } else { wgr = ints[0] || tk[2]; menge = ints.length >= 2 ? +ints[1] : null; karton = ints.length >= 3 ? +ints[2] : null; }
+    if (menge == null) continue;
+    let desc = descToks.map(t => t.s).join(" ");
+    let pos = mainRow ? tk[1] : "", auf = mainRow ? tk[2] : "";
+    // fila de abajo: dígitos de control (y a veces el resto de la descripción)
+    const nx = rows[i + 1];
+    if (mainRow && nx && nx.page === r.page && r.y - nx.y < 20) {
+      const nt = nx.toks.map(t => t.s);
+      const looksMain = /^\d{1,4}$/.test(nt[0] || "") && /^\d{6,7}$/.test(nt[1] || "");
+      if (!looksMain && /^\d$/.test(nt[0] || "")) {
+        let used = 1;
+        if (/^\d$/.test(nt[1] || "")) { if (pos.length === 6) pos += nt[0]; if (auf.length === 9) auf += nt[1]; used = 2; }
+        else if (auf.length === 9) auf += nt[0];
+        const rest = nt.slice(used).join(" ");
+        if (rest && !/^Seite|^Anzahl/i.test(rest)) desc += " " + rest;
+        i++;
+      }
+    }
+    const l = mkLine({ codigo: mainRow ? auf : "", descripcion: mainRow ? desc : `Sin nº de artículo (WGR ${wgr})`, cantidad: menge, precio: vk, inhalt: karton });
+    if (pos) l.pos = pos;
+    if (!mainRow) l.nota = "Línea sin artículo en el albarán";
+    lineas.push(l);
+  }
+  return { proveedor: von ? `TEDi (${von})` : "TEDi", numero, fecha, lineas };
+}
+async function readFile(file) {
+  const name = file.name || "archivo";
+  if (/\.pdf$/i.test(name) || /pdf/i.test(file.type || "")) {
+    await loadPdf();
+    const rows = await pdfRows(await file.arrayBuffer());
+    if (!rows.length) throw new Error("scan");
+    let r = parseTedi(rows);
+    if (!r.lineas.length) { const g = parseSheet(rows.map(x => x.cells)); if (g.lineas.length) r = g; }
+    return r;
+  }
+  if (/\.(xlsx|xlsm|xls|csv|ods)$/i.test(name) || /sheet|excel|csv/i.test(file.type || "")) {
     await loadXlsx();
     const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
     let best = null;
-    for (const name of wb.SheetNames) {
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: "" });
-      const r = parseSheet(rows);
+    for (const sh of wb.SheetNames) {
+      const r = parseSheet(XLSX.utils.sheet_to_json(wb.Sheets[sh], { header: 1, raw: true, defval: "" }));
       if (!best || r.lineas.length > best.lineas.length) best = r;
     }
-    if (!best || !best.lineas.length) { d.error = "No he encontrado líneas en ese Excel. Revisa que tenga una columna de cantidad, o usa la plantilla."; return renderNew(); }
-    let proveedor = best.proveedor, numero = best.numero;
-    if (!proveedor && !numero) proveedor = file.name.replace(/\.(xlsx|xlsm|xls|csv|ods)$/i, "");
-    // se guarda directamente y se abre la lista con check
-    const alb = { id: uid(), proveedor, numero, fecha: best.fecha, creado: Date.now(), lineas: best.lineas };
-    S.albs.set(alb.id, alb); persist(alb); UI.draft = null;
-    setActive(alb.id);
-    flash(`Albarán importado: ${alb.lineas.length} artículos. Marca cada uno al encontrarlo.`, "ok");
-    return;
-  } catch (e) {
-    console.warn(e);
-    d.error = e?.message === "xlsx" ? "No se pudo cargar el lector de Excel. Comprueba la conexión a internet y vuelve a intentarlo." : "No he podido abrir ese archivo. Guárdalo como .xlsx o .csv y vuelve a intentarlo.";
+    return best;
   }
-  renderNew();
+  throw new Error("tipo");
 }
-$("#xlsInput").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) importExcel(f); });
+async function importFiles(files) {
+  if (!UI.draft) UI.draft = { files: [], lineas: [], phase: "pick", error: "" };
+  const d = UI.draft; UI.mode = "nuevo";
+  d.error = ""; d.phase = "reading"; d.note = files.length > 1 ? `Leyendo ${files.length} archivos…` : "Leyendo el albarán…"; renderNew();
+  const ok = [], fails = [], dup = [];
+  for (const file of files) {
+    const fname = file.name || "archivo";
+    try {
+      const r = await readFile(file);
+      if (!r || !r.lineas.length) { fails.push(`${fname}: no he encontrado líneas de artículos`); continue; }
+      let { proveedor, numero, fecha } = r;
+      if (!proveedor && !numero) proveedor = fname.replace(/\.(xlsx|xlsm|xls|csv|ods|pdf)$/i, "");
+      const prev = numero && [...S.albs.values()].find(x => x.numero === numero);
+      if (prev) { dup.push(numero); continue; }
+      const alb = { id: uid(), proveedor, numero, fecha, creado: Date.now(), lineas: r.lineas };
+      S.albs.set(alb.id, alb); persist(alb); ok.push(alb);
+    } catch (e) {
+      console.warn(e);
+      fails.push(`${fname}: ` + ({ pdf: "no se pudo cargar el lector de PDF (revisa internet)", xlsx: "no se pudo cargar el lector de Excel (revisa internet)", scan: "es un PDF escaneado (una foto), no tiene texto que leer", tipo: "no es un Excel ni un PDF" }[e?.message] || "no se pudo abrir"));
+    }
+  }
+  d.phase = "pick";
+  if (!ok.length) {
+    d.error = [...fails, ...dup.map(n => `El albarán ${n} ya estaba cargado.`)].join("\n") || "No se pudo importar.";
+    if (dup.length && !fails.length) { const prev = [...S.albs.values()].find(x => x.numero === dup[0]); UI.draft = null; setActive(prev.id); flash(`El albarán ${dup[0]} ya estaba cargado: lo he abierto.`, "ok"); return; }
+    return renderNew();
+  }
+  UI.draft = null;
+  setActive(ok[ok.length - 1].id);
+  const n = ok.reduce((t, x) => t + x.lineas.length, 0);
+  let msg = ok.length === 1 ? `Albarán ${ok[0].numero || ""} importado: ${n} artículos.` : `${ok.length} albaranes importados (${n} artículos). Al escanear se buscan en todos.`;
+  if (dup.length) msg += ` Ya estaban cargados: ${dup.join(", ")}.`;
+  if (fails.length) msg += ` No se pudo: ${fails.join("; ")}.`;
+  flash(msg, fails.length ? "err" : "ok");
+}
+$("#xlsInput").addEventListener("change", e => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) importFiles(fs); });
 function renderReview() {
   const d = UI.draft;
   const total = () => eur(d.lineas.reduce((s, l) => s + (l.cant || 0) * (l.precio || 0), 0));
