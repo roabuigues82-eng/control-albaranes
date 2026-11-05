@@ -627,11 +627,11 @@ const COLS = [ // orden de prioridad al asignar columnas; dentro de cada una, de
   ["ean", [/\b(ean|gtin|upc)\b|cod(igo)?\.? ?(de )?barras/]],
   ["importe", [/importe|^total|subtotal/]],
   ["precio", [/precio|p\.? ?unit|\bpvp\b|\bvk\b|preis|coste|tarifa/]],
-  ["nota", [/^nota|observ|anotaci|bemerk/]],
+  ["nota", [/^nota|observ|anotaci|bemerk|^aviso/]],
   ["inhalt", [/karton|inhalt|uds? ?(\/|por|x) ?caja|unid.*caja|por caja|^u\/c$/]],
-  ["cant", [/cant|menge|uds|unid|\bqty\b|piezas|^u\.?$/]],
+  ["cant", [/^cant|cantidad|menge|\bqty\b|piezas/, /\buds\b|^unidades$|^u\.?$/]],
   ["desc", [/desc|denomin|bezeichnung/, /producto|nombre|concepto|articulo/]],
-  ["codigo", [/cod|ref|sku|pos\.? ?nr|artikel ?nr|art\.? ?nr/, /art\.?$|articulo|^n[º°o]? ?art/]]
+  ["codigo", [/cod|ref|sku|pedido|auftrag|artikel ?nr|art\.? ?nr/, /pos\.? ?nr/, /art\.?$|articulo|^n[º°o]? ?art/]]
 ];
 function fmtCellDate(v) {
   if (v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
@@ -713,9 +713,50 @@ async function pdfRows(buf) {
       return out;
     };
     const rt = group(toks), rc = group(cells);
-    rt.forEach((r, i) => rows.push({ page: p, y: r.y, toks: r.items, cells: (rc.find(c => Math.abs(c.y - r.y) <= 2.5) || { items: [] }).items.map(c => c.s) }));
+    rt.forEach((r, i) => { const c = (rc.find(c => Math.abs(c.y - r.y) <= 2.5) || { items: [] }).items; rows.push({ page: p, y: r.y, toks: r.items, cells: c.map(c => c.s), cellsX: c }); });
   }
   return rows;
+}
+/* cualquier tabla de PDF: busca la cabecera y reparte cada palabra en su columna según su posición */
+function parsePdfTable(rows) {
+  const all = rows.map(r => r.toks.map(t => t.s).join(" ")).join("\n");
+  let cols = null, hi = -1;
+  for (let i = 0; i < rows.length && !cols; i++) {
+    const cells = rows[i].cellsX || []; const m = {}; const used = new Set();
+    for (const [k, res] of COLS) for (const re of res) {
+      const j = cells.findIndex((c, idx) => !used.has(idx) && re.test(plain(c.s)));
+      if (j >= 0) { m[k] = j; used.add(j); break; }
+    }
+    if (m.cant != null && (m.codigo != null || m.desc != null)) { hi = i; cols = cells.map((c, idx) => ({ x: c.x, key: Object.keys(m).find(k => m[k] === idx) || null })); }
+  }
+  if (!cols) return { lineas: [] };
+  const hpage = rows[hi].page;
+  const lineas = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (i === hi || (r.page === hpage && r.y >= rows[hi].y)) continue;
+    if (r.toks.some(t => /^(cantidad|menge)$/i.test(t.s))) continue; // cabecera repetida en otra página
+    const v = {};
+    r.toks.forEach(t => {
+      let c = 0; for (let j = 0; j < cols.length; j++) if (cols[j].x <= t.x + 6) c = j;
+      const k = cols[c].key; if (k) v[k] = v[k] ? v[k] + " " + t.s : t.s;
+    });
+    const cant = parseNum(v.cant);
+    if (cant == null || !(v.codigo || v.desc)) continue;
+    if (/^(total|summe|anzahl)/i.test(plain(v.desc || ""))) continue;
+    const l = mkLine({ codigo: (v.codigo || "").replace(/\s+/g, ""), ean: v.ean || "", descripcion: v.desc || "", cantidad: cant, precio: parseNum(v.precio), inhalt: parseNum(v.inhalt) });
+    l.nota = (v.nota || "").replace(/^\*\s*/, "").trim();
+    lineas.push(l);
+  }
+  const fm = /(?:Fecha|Belegdatum|Datum)\s*:?\s*(\d{1,2})\.(\d{1,2})\.(\d{4})/i.exec(all);
+  const unidad = (/Unidad\s+(\d+)/i.exec(all) || [])[1], tienda = (/Tienda\s*:?\s*(\d+)/i.exec(all) || [])[1];
+  const ls = (/Lieferschein\s*Nr\.?\s*(\d+)/i.exec(all) || /Albar[aá]n\s*(?:N[º°o]\.?)?\s*:?\s*([\w\-\/]+)/i.exec(all) || [])[1];
+  return {
+    proveedor: tienda ? `Inventario Tienda ${tienda}` : "",
+    numero: ls || (unidad ? `Unidad ${unidad}` : ""),
+    fecha: fm ? `${fm[3]}-${fm[2].padStart(2, "0")}-${fm[1].padStart(2, "0")}` : "",
+    lineas
+  };
 }
 /* albarán de TEDi (Lieferschein): LFD, POS NR, AUFTRAG, BEZEICHNUNG, WGR, DNP, MENGE, KARTON-INHALT, VK.
    Debajo de POS NR y AUFTRAG va un dígito más: el código del artículo = AUFTRAG (9) + ese dígito = 10 cifras. */
@@ -791,6 +832,7 @@ async function readFile(file) {
     const rows = await pdfRows(await file.arrayBuffer());
     if (!rows.length) throw new Error("scan");
     let r = parseTedi(rows);
+    if (!r.lineas.length) r = parsePdfTable(rows);
     if (!r.lineas.length) { const g = parseSheet(rows.map(x => x.cells)); if (g.lineas.length) r = g; }
     return r;
   }
@@ -819,7 +861,8 @@ async function importFiles(files) {
       let { proveedor, numero, fecha } = r;
       if (!proveedor && !numero) proveedor = fname.replace(/\.(xlsx|xlsm|xls|csv|ods|pdf)$/i, "");
       const prev = numero && [...S.albs.values()].find(x => x.numero === numero);
-      if (prev) { dup.push(numero); continue; }
+      if (prev && prev.lineas.some(l => l.recib != null)) { dup.push(numero); continue; }
+      if (prev) S.albs.delete(prev.id);
       const alb = { id: uid(), proveedor, numero, fecha, creado: Date.now(), lineas: r.lineas };
       S.albs.set(alb.id, alb); persist(alb); ok.push(alb);
     } catch (e) {
@@ -830,7 +873,7 @@ async function importFiles(files) {
   d.phase = "pick";
   if (!ok.length) {
     d.error = [...fails, ...dup.map(n => `El albarán ${n} ya estaba cargado.`)].join("\n") || "No se pudo importar.";
-    if (dup.length && !fails.length) { const prev = [...S.albs.values()].find(x => x.numero === dup[0]); UI.draft = null; setActive(prev.id); flash(`El albarán ${dup[0]} ya estaba cargado: lo he abierto.`, "ok"); return; }
+    if (dup.length && !fails.length) { const prev = [...S.albs.values()].find(x => x.numero === dup[0]); UI.draft = null; setActive(prev.id); flash(`«${dup[0]}» ya estaba cargado con artículos marcados: lo he abierto sin cambiarlo. Si quieres volver a importarlo, bórralo antes (Más opciones → Borrar albarán).`, "err"); return; }
     return renderNew();
   }
   UI.draft = null;
