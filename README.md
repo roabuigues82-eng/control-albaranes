@@ -14,7 +14,7 @@ App web para el móvil que ayuda a comprobar la mercancía recibida contra el al
 
    Lo marcado queda con ✓ y tachado.
 3. Arriba se ve el progreso (por ejemplo, 120 / 364). La pestaña **Pendientes** muestra lo que falta por encontrar.
-4. Si una cantidad o un precio no cuadra, toca **⋯** en ese artículo para corregirlo.
+4. Si una cantidad o un precio no cuadra, toca el lápiz ✎ de ese artículo y pon lo que ha llegado.
 5. La pestaña **Diferencias** muestra las faltas y sobras con su importe. En **Ver todos los albaranes** se descargan las diferencias de todos en un Excel.
 
 ## Formato del Excel
