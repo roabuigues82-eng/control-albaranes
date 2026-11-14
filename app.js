@@ -21,11 +21,19 @@ const norm = s => String(s ?? "").toUpperCase().replace(/[\s\-\.\/]/g, "");
 const stripZ = s => s.replace(/^0+(?=\d)/, "");
 const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch { return false; } };
-function downloadFile(name, data, type) {
+async function downloadFile(name, data, type) {
+  try {
+    const file = new File([data], name, { type });
+    if (navigator.canShare && navigator.canShare({ files: [file] }) && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      await navigator.share({ files: [file], title: name });
+      return "shared";
+    }
+  } catch (e) { if (e && e.name === "AbortError") return "cancelled"; }
   const url = URL.createObjectURL(new Blob([data], { type }));
   const a = document.createElement("a"); a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  return "downloaded";
 }
 const ICON = {
   cam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
@@ -131,7 +139,7 @@ function renderList(albs) {
         <div style="display:flex;gap:10px;align-items:center"><div class="bar" aria-label="${pc}% visto"><i style="width:${pc}%"></i></div>
         <button class="btn" data-open="${a.id}" type="button">Abrir</button></div></div>`;
     }).join("")}</div>
-    <button class="btn" id="lDifAll" type="button" style="width:100%;margin-top:12px">Descargar diferencias de todos (Excel)</button>
+    <button class="btn" id="lDifAll" type="button" style="width:100%;margin-top:12px">Descargar todos los albaranes (Excel)</button>
   </section>`;
   $("#lBack").onclick = () => { UI.mode = "cotejo"; render(); };
   $("#lDifAll").onclick = () => exportDiffXlsx(albs);
@@ -176,6 +184,7 @@ function renderCotejo() {
         <button type="button" class="more" data-edit="${l.id}" aria-label="Cambiar cantidad de ${esc(l.desc)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg></button>
       </li>`;
     }).join("") || `<li class="muted" style="padding:16px">${f === "pend" ? "¡Todo visto! No queda nada pendiente." : "Nada por aquí todavía."}</li>`}</ul>`}
+    <button class="btn primary" id="btnDownload" type="button" style="width:100%;margin-top:12px;min-height:50px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Descargar albarán controlado (Excel)</button>
     <details class="extras"${UI.confirmDel ? " open" : ""}><summary>Más opciones</summary>
       <div class="totals">
         <div><span class="label">Con diferencias</span><span class="v">${inc}</span></div>
@@ -183,7 +192,7 @@ function renderCotejo() {
         <div><span class="label">Importe visto</span><span class="v">${eur(s.impRec)}</span></div>
       </div>
       <div class="row" style="margin-top:12px">
-        <button class="btn" id="btnExport" type="button">Exportar a Excel (CSV)</button>
+        <button class="btn" id="btnExport" type="button">Exportar en CSV</button>
         <button class="btn ghost" id="btnAddLine" type="button">Añadir artículo a mano</button>
         ${UI.confirmDel ? `<span class="muted">¿Borrar este albarán?</span><button class="btn danger" id="btnDelYes" type="button">Sí, borrar</button><button class="btn ghost" id="btnDelNo" type="button">Cancelar</button>` : `<button class="btn ghost" id="btnDel" type="button">Borrar albarán</button>`}
       </div>
@@ -198,6 +207,7 @@ function renderCotejo() {
   $("#view").querySelectorAll("[data-tog]").forEach(el => el.onclick = () => toggleLine(el.dataset.tog));
   $("#view").querySelectorAll("[data-edit]").forEach(el => el.onclick = () => { UI.selected = el.dataset.edit; UI.matches = null; renderCotejo(); scrollTo({ top: 0, behavior: "smooth" }); });
   $("#btnExport").onclick = exportCsv;
+  $("#btnDownload").onclick = () => exportDiffXlsx([a]);
   $("#btnAddLine").onclick = () => { const l = mkLine({ descripcion: "Artículo nuevo", extra: true }); l.recib = 1; a.lineas.push(l); persist(a); UI.selected = l.id; renderCotejo(); scrollTo({ top: 0 }); };
   if ($("#btnDel")) $("#btnDel").onclick = () => { UI.confirmDel = true; renderCotejo(); };
   if ($("#btnDelYes")) $("#btnDelYes").onclick = () => { UI.confirmDel = false; removeAlb(a.id); };
@@ -249,7 +259,7 @@ function renderDiffs(D, pend) {
     </div>
     ${pend ? `<p class="muted" style="font-size:13px;margin:8px 4px 0">Quedan ${pend} artículos sin marcar. Si no aparecen, también faltarán.</p>` : ""}
     <ul class="checklist">${D.rows.map(row).join("") || `<li class="muted" style="padding:16px">Sin diferencias por ahora. Cuando cambies una cantidad con el lápiz ✎, aparecerá aquí.</li>`}</ul>
-    <button class="btn" id="btnDifXlsx" type="button" style="width:100%;margin-top:10px">Descargar hoja de diferencias (Excel)</button>`;
+    <button class="btn" id="btnDifXlsx" type="button" style="width:100%;margin-top:10px">Descargar albarán controlado (Excel)</button>`;
 }
 async function exportDiffXlsx(albs) {
   flash("Preparando el Excel…");
@@ -274,12 +284,24 @@ async function exportDiffXlsx(albs) {
   const ws2 = XLSX.utils.aoa_to_sheet([["Artículos sin marcar (aún no encontrados)"], [], [...(many ? ["Albarán"] : []), "Código", "Descripción", "Cant. albarán", "Precio", "Importe"], ...pend]);
   ws2["!cols"] = [...(many ? [{ wch: 11 }] : []), { wch: 13 }, { wch: 36 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
   const wb = XLSX.utils.book_new();
+  const allRows = [];
+  albs.forEach(x => x.lineas.forEach(l => {
+    const pr = l.precioReal ?? l.precio;
+    const du = l.recib == null ? "" : (l.extra ? l.recib : l.recib - (l.cant || 0));
+    const de = l.recib == null ? "" : r2((l.recib || 0) * (pr || 0) - (l.extra ? 0 : (l.cant || 0) * (l.precio || 0)));
+    allRows.push([...pre(x), l.codigo, l.desc, l.extra ? "" : l.cant, l.recib ?? "", du, l.precio ?? "", l.precioReal ?? "", de, l.recib == null ? "Sin marcar" : ST_LABEL[status(l)], l.nota || ""]);
+  }));
+  const tot = albs.reduce((t, x) => { const st = stats(x); t.v += st.revisadas; t.n += st.total; t.a += st.impAlb; t.r += st.impRec; return t; }, { v: 0, n: 0, a: 0, r: 0 });
+  const ws0 = XLSX.utils.aoa_to_sheet([...head, [...(many ? ["Albarán"] : []), "Código", "Descripción", "Cant. albarán", "Cant. recibida", "Diferencia uds", "Precio albarán", "Precio real", "Diferencia €", "Estado", "Nota"], ...allRows,
+    [], ["Artículos vistos", ...pad, `${tot.v} de ${tot.n}`], ["Importe albarán", ...pad, "", "", "", "", "", "", r2(tot.a)], ["Importe recibido", ...pad, "", "", "", "", "", "", r2(tot.r)], ["Diferencia", ...pad, "", "", "", "", "", "", r2(tot.r - tot.a)]]);
+  ws0["!cols"] = ws["!cols"];
+  XLSX.utils.book_append_sheet(wb, ws0, "Albarán controlado");
   XLSX.utils.book_append_sheet(wb, ws, "Diferencias");
   XLSX.utils.book_append_sheet(wb, ws2, "Sin marcar");
   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
   const safe = t => String(t || "").replace(/[^\w\-]+/g, "_");
-  downloadFile(many ? `diferencias_${albs.length}_albaranes.xlsx` : `diferencias_${safe(albs[0].numero) || "albaran"}.xlsx`, out, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  flash("Hoja de diferencias descargada.", "ok");
+  const res = await downloadFile(many ? `control_${albs.length}_albaranes.xlsx` : `control_albaran_${safe(albs[0].numero) || "albaran"}.xlsx`, out, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  flash(res === "cancelled" ? "" : res === "shared" ? "Excel listo: elige «Guardar en Archivos» o envíalo por WhatsApp o correo." : "Excel descargado.", "ok");
 }
 
 function renderCard() {
