@@ -324,7 +324,7 @@ function renderCard() {
           <div class="codes"><span>${esc(fl.codigo || "—")}</span>${fl.nota ? `<span>${esc(fl.nota)}</span>` : ""}</div></div>
         <button class="iconbtn" id="fClose" aria-label="Cerrar" type="button">${ICON.x}</button>
       </div>
-      ${done ? `<div class="already">✓ YA LO HABÍAS MARCADO ANTES${fl.marcadoAt ? ` · ${whenTxt(fl.marcadoAt)}` : ""}</div>` : `<div class="notyet">Sin marcar todavía</div>`}
+      ${done ? `<div class="already">✓ YA LO HABÍAS MARCADO ANTES</div>` : `<div class="notyet">Sin marcar todavía</div>`}
       <div class="fnums"><div><span class="label">En el albarán</span><b>${fl.extra ? "—" : num(fl.cant)} uds</b></div><div><span class="label">Precio</span><b>${eur(fl.precio)}</b></div>
         ${done ? `<div><span class="label">Marcado</span><b>${num(fl.recib)} uds</b></div>` : ""}</div>
       ${done && st !== "ok" ? `<div class="pill s-${st}" style="align-self:flex-start">${ST_LABEL[st]}</div>` : ""}
