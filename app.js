@@ -410,23 +410,28 @@ function refreshKeepFocus() { const y = scrollY; renderCotejo(); scrollTo(0, y);
 
 /* ---------- búsqueda ---------- */
 /* El código de barras de la etiqueta lleva más números: el código del artículo son los 10 primeros. */
+/* solo las cifras del código leído (quita letras, prefijos y caracteres de control) */
+const digitsOf = raw => String(raw ?? "").replace(/\D/g, "");
 function scanCandidates(raw) {
-  const q = norm(raw); if (!q) return [];
+  const q = norm(raw), d = digitsOf(raw); if (!q) return [];
   const out = [];
-  if (/^\d{11,}$/.test(q)) out.push(q.slice(0, 10));
+  if (d.length >= 11) { out.push(d.slice(0, 10)); if (d[0] === "0") out.push(d.slice(1, 11)); }
+  if (d.length >= 6 && d !== q) out.push(d);
   out.push(q);
-  return out;
+  return [...new Set(out)];
 }
-/* coincidencia exacta (o código de barras que empieza por el código) */
+/* coincidencia exacta; si no, el código de 10 cifras dentro del código de barras (con o sin su última cifra) */
 function findStrict(alb, raw) {
   for (const q of scanCandidates(raw)) {
     const qz = stripZ(q);
     const m = alb.lineas.filter(l => [l.codigo, l.ean, l.pos].some(c => { const n = norm(c); return n && (n === q || stripZ(n) === qz); }));
     if (m.length) return m;
   }
-  const q = norm(raw);
-  if (q.length >= 11) {
-    const m = alb.lineas.filter(l => [l.codigo, l.ean].some(c => { const n = norm(c); return n.length >= 8 && (q.startsWith(n) || q.includes(n)); }));
+  const d = digitsOf(raw);
+  if (d.length >= 11) {
+    let m = alb.lineas.filter(l => [l.codigo, l.ean].some(c => { const n = digitsOf(c); return n.length >= 8 && d.includes(n); }));
+    if (m.length) return m;
+    m = alb.lineas.filter(l => { const n = digitsOf(l.codigo); return n.length === 10 && d.includes(n.slice(0, 9)); });
     if (m.length) return m;
   }
   return [];
@@ -599,7 +604,8 @@ function onLiveCode(code) {
   // si lo encuentra, se cierra la cámara y se enseña el artículo para marcarlo a mano
   const found = search(code);
   if (found) { closeScanner(); scrollTo({ top: 0 }); return; }
-  $("#smsg").textContent = `✗ «${scanCandidates(code)[0]}» no está en ${S.albs.size > 1 ? "ningún albarán" : "este albarán"}`;
+  const used = scanCandidates(code)[0];
+  $("#smsg").textContent = `✗ No está en ${S.albs.size > 1 ? "ningún albarán" : "el albarán"}. Leído: ${code}${used !== code ? ` → busco ${used}` : ""}`;
   $("#smsg").style.color = "#ffb4ab";
   try { navigator.vibrate?.([80, 60, 80]); } catch { }
 }
