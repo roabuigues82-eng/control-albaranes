@@ -205,7 +205,7 @@ function renderCotejo() {
   if ($("#btnDifXlsx")) $("#btnDifXlsx").onclick = () => exportDiffXlsx([a]);
   if ($("#goList")) $("#goList").onclick = () => { UI.mode = "lista"; render(); };
   $("#view").querySelectorAll("[data-tog]").forEach(el => el.onclick = () => toggleLine(el.dataset.tog));
-  $("#view").querySelectorAll("[data-edit]").forEach(el => el.onclick = () => { UI.selected = el.dataset.edit; UI.matches = null; renderCotejo(); scrollTo({ top: 0, behavior: "smooth" }); });
+  $("#view").querySelectorAll("[data-edit]").forEach(el => el.onclick = () => { UI.found = null; UI.selected = el.dataset.edit; UI.matches = null; renderCotejo(); scrollTo({ top: 0, behavior: "smooth" }); });
   $("#btnExport").onclick = exportCsv;
   $("#btnDownload").onclick = () => exportDiffXlsx([a]);
   $("#btnAddLine").onclick = () => { const l = mkLine({ descripcion: "Artículo nuevo", extra: true }); l.recib = 1; a.lineas.push(l); persist(a); UI.selected = l.id; renderCotejo(); scrollTo({ top: 0 }); };
@@ -214,12 +214,13 @@ function renderCotejo() {
   if ($("#btnDelNo")) $("#btnDelNo").onclick = () => { UI.confirmDel = false; renderCotejo(); };
   if (UI.flashId) {
     const el = $(`.ck[data-id="${UI.flashId}"]`);
-    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (el && !UI.found) el.scrollIntoView({ block: "center", behavior: "smooth" });
     const id = UI.flashId; setTimeout(() => { if (UI.flashId === id) { UI.flashId = null; $(`.ck[data-id="${id}"]`)?.classList.remove("flash"); } }, 2500);
   }
 }
 function toggleLine(id) {
   const a = cur(); const l = a.lineas.find(x => x.id === id); if (!l) return;
+  if (UI.found === id) UI.found = null;
   if (l.recib == null) { l.recib = l.extra ? 1 : l.cant; flash(`✓ ${l.desc}`, "ok"); }
   else { l.recib = null; l.precioReal = null; flash(`Desmarcado: ${l.desc}`); }
   persist(a);
@@ -307,6 +308,30 @@ async function exportDiffXlsx(albs) {
 function renderCard() {
   const slot = $("#cardSlot"); if (!slot) return;
   const a = cur();
+  const fl = UI.found && !UI.selected && !UI.matches ? a.lineas.find(x => x.id === UI.found) : null;
+  if (fl) {
+    const done = fl.recib != null, st = status(fl);
+    slot.innerHTML = `<section class="card found${done ? " isdone" : ""}" aria-live="polite">
+      <div class="top" style="flex-wrap:nowrap">
+        <div style="min-width:0;flex:1"><div class="label">${S.albs.size > 1 ? `Albarán ${esc(albName(a))}` : "Encontrado"}</div>
+          <div class="desc">${esc(fl.desc || "Sin descripción")}</div>
+          <div class="codes"><span>${esc(fl.codigo || "—")}</span>${fl.nota ? `<span>${esc(fl.nota)}</span>` : ""}</div></div>
+        <button class="iconbtn" id="fClose" aria-label="Cerrar" type="button">${ICON.x}</button>
+      </div>
+      <div class="fnums"><div><span class="label">En el albarán</span><b>${fl.extra ? "—" : num(fl.cant)} uds</b></div><div><span class="label">Precio</span><b>${eur(fl.precio)}</b></div>
+        ${done ? `<div><span class="label">Marcado</span><b>${num(fl.recib)} uds</b></div>` : ""}</div>
+      ${done && st !== "ok" ? `<div class="pill s-${st}" style="align-self:flex-start">${ST_LABEL[st]}</div>` : ""}
+      <div class="actions">
+        ${done ? `<button class="btn ghost" id="fUnmark" type="button">Desmarcar</button>` : `<button class="btn primary" id="fMark" type="button" style="flex:1;min-height:52px;font-size:16px">✓ Marcar ${fl.extra ? "" : num(fl.cant) + " uds"}</button>`}
+        <button class="btn" id="fEdit" type="button" style="${done ? "flex:1;" : ""}min-height:52px">✎ ${done ? "Cambiar cantidad" : "Otra cantidad"}</button>
+      </div>
+    </section>`;
+    $("#fClose").onclick = () => { UI.found = null; renderCotejo(); };
+    $("#fEdit").onclick = () => { UI.selected = fl.id; UI.found = null; renderCotejo(); scrollTo({ top: 0 }); };
+    if ($("#fMark")) $("#fMark").onclick = () => { fl.recib = fl.extra ? 1 : fl.cant; persist(a); UI.found = null; UI.flashId = fl.id; flash(`✓ ${fl.desc}`, "ok"); renderCotejo(); };
+    if ($("#fUnmark")) $("#fUnmark").onclick = () => { fl.recib = null; fl.precioReal = null; persist(a); flash(`Desmarcado: ${fl.desc}`); renderCotejo(); };
+    return;
+  }
   if (UI.matches) {
     slot.innerHTML = `<section class="card"><div class="top"><h3>Varias coincidencias: elige el artículo</h3><button class="iconbtn" id="cClose" aria-label="Cerrar" type="button">${ICON.x}</button></div>
       ${UI.matchAlb && UI.matchAlb !== S.active ? `<p class="muted" style="margin:0">Del albarán ${esc(albName(S.albs.get(UI.matchAlb)))}</p>` : ""}
@@ -429,12 +454,11 @@ function search(raw) {
 function selectLine(id, count, alb) {
   alb = alb || S.albs.get(UI.matchAlb) || cur();
   const l = alb.lineas.find(x => x.id === id); if (!l) return;
-  const other = alb.id !== S.active ? ` · del albarán ${albName(alb)}` : "";
-  if (l.recib == null) { l.recib = l.extra ? 1 : l.cant; flash(`✓ ${l.desc} · ${num(l.cant)} uds · ${eur(l.precio)}${other}`, "ok"); }
-  else flash(`Ya estaba marcado: ${l.desc}${other}`);
-  persist(alb);
-  UI.selected = null; UI.matches = null; UI.matchAlb = null; UI.flashId = id;
-  renderCotejo();
+  if (alb.id !== S.active) { S.active = alb.id; lsSet("cotejo-activo", alb.id); UI.filter = "todas"; }
+  UI.selected = null; UI.matches = null; UI.matchAlb = null;
+  UI.found = id; UI.flashId = id;
+  flash(`Encontrado: ${l.desc}${l.recib != null ? " (ya marcado)" : ""}`, "ok");
+  renderCotejo(); scrollTo({ top: 0 });
 }
 
 /* ---------- lectura de códigos de barras ---------- */
@@ -526,7 +550,7 @@ async function openScanner() {
   const caps = track.getCapabilities?.() || {};
   $("#sTorch").hidden = !caps.torch;
   try { if (caps.focusMode?.includes("continuous")) await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch { }
-  $("#smsg").textContent = "Ve escaneando: cada artículo se marca solo. Pulsa Cerrar al acabar.";
+  $("#smsg").textContent = "Apunta al código de barras del artículo";
   $("#smsg").style.color = "";
   const nd = await getNativeDetector();
   const canvas = document.createElement("canvas");
@@ -565,15 +589,14 @@ function onLiveCode(code) {
   if (code === SC.last && now - SC.lastAt < 1800) return;
   SC.last = code; SC.lastAt = now;
   beep();
-  // la cámara sigue abierta para ir escaneando un artículo tras otro
+  // si lo encuentra, se cierra la cámara y se enseña el artículo para marcarlo a mano
   const found = search(code);
-  const st = cur() ? stats(cur()) : null;
-  $("#smsg").textContent = (found ? UI.msg : `✗ «${code}» no está en este albarán`) + (st ? `  ·  ${st.revisadas} / ${st.total}` : "");
-  $("#smsg").style.color = found ? "#9ff0b8" : "#ffb4ab";
-  if (!found) try { navigator.vibrate?.([80, 60, 80]); } catch { }
+  if (found) { closeScanner(); scrollTo({ top: 0 }); return; }
+  $("#smsg").textContent = `✗ «${scanCandidates(code)[0]}» no está en ${S.albs.size > 1 ? "ningún albarán" : "este albarán"}`;
+  $("#smsg").style.color = "#ffb4ab";
+  try { navigator.vibrate?.([80, 60, 80]); } catch { }
 }
 function closeScanner() {
-  if (UI.flashId) { const el = $(`.ck[data-id="${UI.flashId}"]`); setTimeout(() => el?.scrollIntoView({ block: "center" }), 50); }
   clearTimeout(SC.timer); SC.timer = null;
   SC.stream?.getTracks().forEach(t => t.stop()); SC.stream = null; SC.torch = false;
   $("#video").srcObject = null; $("#scanner").hidden = true;

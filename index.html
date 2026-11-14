@@ -158,6 +158,11 @@ button.chip[aria-pressed="true"]{background:var(--ink);color:var(--sheet);border
 .extras summary{color:var(--muted);font-size:14px}
 .allalb{font-size:13px;color:var(--muted);margin-top:4px}
 .allalb button{border:none;background:none;color:var(--carbon);font-weight:600;padding:0;text-decoration:underline}
+.card.found{border-color:var(--carbon)}
+.card.found.isdone{border-color:var(--ok)}
+.fnums{display:flex;gap:18px;flex-wrap:wrap}
+.fnums div{display:flex;flex-direction:column}
+.fnums b{font-family:var(--f-mono);font-size:20px}
 /* Bloques de subida y revisión */
 .pickbtns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pickbtns .btn{min-height:64px;flex-direction:column;gap:4px}
@@ -225,7 +230,7 @@ h3{font-size:16px;font-weight:700}
     <select class="albsel" id="albSel" aria-label="Albarán activo" style="flex-basis:100%"></select>
   </header>
   <div id="view"></div>
-  <p class="foot">Los albaranes se guardan en este móvil. En Ajustes puedes descargar una copia de seguridad. · Versión 17</p>
+  <p class="foot">Los albaranes se guardan en este móvil. En Ajustes puedes descargar una copia de seguridad. · Versión 18</p>
 </div>
 
 <nav class="dock" id="dock" hidden>
