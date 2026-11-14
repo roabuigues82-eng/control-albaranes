@@ -221,7 +221,7 @@ function renderCotejo() {
 function toggleLine(id) {
   const a = cur(); const l = a.lineas.find(x => x.id === id); if (!l) return;
   if (UI.found === id) UI.found = null;
-  if (l.recib == null) { l.recib = l.extra ? 1 : l.cant; flash(`✓ ${l.desc}`, "ok"); }
+  if (l.recib == null) { l.recib = l.extra ? 1 : l.cant; l.marcadoAt = Date.now(); flash(`✓ ${l.desc}`, "ok"); }
   else { l.recib = null; l.precioReal = null; flash(`Desmarcado: ${l.desc}`); }
   persist(a);
   const y = scrollY; renderCotejo(); scrollTo(0, y);
@@ -305,6 +305,12 @@ async function exportDiffXlsx(albs) {
   flash(res === "cancelled" ? "" : res === "shared" ? "Excel listo: elige «Guardar en Archivos» o envíalo por WhatsApp o correo." : "Excel descargado.", "ok");
 }
 
+function whenTxt(t) {
+  const d = new Date(t), now = new Date();
+  const hm = d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === now.toDateString()) return `hoy a las ${hm}`;
+  return `${d.toLocaleDateString("es-ES", { day: "numeric", month: "short" })} a las ${hm}`;
+}
 function renderCard() {
   const slot = $("#cardSlot"); if (!slot) return;
   const a = cur();
@@ -318,6 +324,7 @@ function renderCard() {
           <div class="codes"><span>${esc(fl.codigo || "—")}</span>${fl.nota ? `<span>${esc(fl.nota)}</span>` : ""}</div></div>
         <button class="iconbtn" id="fClose" aria-label="Cerrar" type="button">${ICON.x}</button>
       </div>
+      ${done ? `<div class="already">✓ YA LO HABÍAS MARCADO ANTES${fl.marcadoAt ? ` · ${whenTxt(fl.marcadoAt)}` : ""}</div>` : `<div class="notyet">Sin marcar todavía</div>`}
       <div class="fnums"><div><span class="label">En el albarán</span><b>${fl.extra ? "—" : num(fl.cant)} uds</b></div><div><span class="label">Precio</span><b>${eur(fl.precio)}</b></div>
         ${done ? `<div><span class="label">Marcado</span><b>${num(fl.recib)} uds</b></div>` : ""}</div>
       ${done && st !== "ok" ? `<div class="pill s-${st}" style="align-self:flex-start">${ST_LABEL[st]}</div>` : ""}
@@ -328,7 +335,7 @@ function renderCard() {
     </section>`;
     $("#fClose").onclick = () => { UI.found = null; renderCotejo(); };
     $("#fEdit").onclick = () => { UI.selected = fl.id; UI.found = null; renderCotejo(); scrollTo({ top: 0 }); };
-    if ($("#fMark")) $("#fMark").onclick = () => { fl.recib = fl.extra ? 1 : fl.cant; persist(a); UI.found = null; UI.flashId = fl.id; flash(`✓ ${fl.desc}`, "ok"); renderCotejo(); };
+    if ($("#fMark")) $("#fMark").onclick = () => { fl.recib = fl.extra ? 1 : fl.cant; fl.marcadoAt = Date.now(); persist(a); UI.found = null; UI.flashId = fl.id; flash(`✓ ${fl.desc}`, "ok"); renderCotejo(); };
     if ($("#fUnmark")) $("#fUnmark").onclick = () => { fl.recib = null; fl.precioReal = null; persist(a); flash(`Desmarcado: ${fl.desc}`); renderCotejo(); };
     return;
   }
@@ -386,7 +393,7 @@ function renderCard() {
   $("#cMinus").onclick = () => { inp.value = comma(Math.max(0, (parseNum(inp.value) ?? 0) - 1)); diff(); };
   $("#cPlus").onclick = () => { inp.value = comma((parseNum(inp.value) ?? 0) + 1); diff(); };
   $("#cOk").onclick = () => {
-    l.recib = parseNum(inp.value) ?? 0;
+    l.recib = parseNum(inp.value) ?? 0; l.marcadoAt = Date.now();
     l.precioReal = parseNum($("#cPrecio").value);
     l.nota = $("#cNota").value.trim();
     if (l.extra) { l.desc = $("#cDesc").value.trim() || "Artículo"; l.codigo = $("#cCode").value.trim(); }
@@ -457,7 +464,7 @@ function selectLine(id, count, alb) {
   if (alb.id !== S.active) { S.active = alb.id; lsSet("cotejo-activo", alb.id); UI.filter = "todas"; }
   UI.selected = null; UI.matches = null; UI.matchAlb = null;
   UI.found = id; UI.flashId = id;
-  flash(`Encontrado: ${l.desc}${l.recib != null ? " (ya marcado)" : ""}`, "ok");
+  flash(l.recib != null ? `Encontrado: ${l.desc} · ya estaba marcado` : `Encontrado: ${l.desc} · sin marcar`, "ok");
   renderCotejo(); scrollTo({ top: 0 });
 }
 
